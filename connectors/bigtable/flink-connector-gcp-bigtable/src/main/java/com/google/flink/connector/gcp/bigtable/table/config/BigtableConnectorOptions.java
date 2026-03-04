@@ -20,6 +20,7 @@ package com.google.flink.connector.gcp.bigtable.table.config;
 
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
+import org.apache.flink.table.factories.FactoryUtil;
 
 /**
  * Configurations for a Bigtable Table API Write. Needs to be public so that the {@link
@@ -107,4 +108,14 @@ public class BigtableConnectorOptions {
                                     + "'upsert' (INSERT, UPDATE_AFTER, DELETE), "
                                     + "'all' (INSERT, UPDATE_BEFORE, UPDATE_AFTER, DELETE). "
                                     + "Modes other than 'insert-only' require a PRIMARY KEY.");
+
+    public static final ConfigOption<String> VALUE_FORMAT =
+            ConfigOptions.key("value" + FactoryUtil.FORMAT_SUFFIX)
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "The format for encoding cell values. "
+                                    + "When set, discovers a SerializationFormatFactory via SPI.");
+
+    public static final String QUALIFIER_FIELD_SUFFIX = ".qualifier-field";
 }

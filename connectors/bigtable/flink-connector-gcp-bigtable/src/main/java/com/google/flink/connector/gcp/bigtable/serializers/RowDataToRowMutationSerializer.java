@@ -131,8 +131,7 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
     @Override
     @Nullable
     public RowMutationEntry serialize(RowData record, SinkWriter.Context context) {
-        String rowKey =
-                extractRowKeyAsString(record, this.rowKeyIndex, this.rowKeyTypeRoot);
+        String rowKey = extractRowKeyAsString(record, this.rowKeyIndex, this.rowKeyTypeRoot);
 
         if (upsertMode) {
             RowKind kind = record.getRowKind();

@@ -44,4 +44,8 @@ public class ErrorMessages {
     public static final String SCHEMA_NULL = "Row key field must be set";
     public static final String MULTIPLE_PRIMARY_KEYS_TEMPLATE =
             "There must be exactly one primary key, found %d.";
+    public static final String QUALIFIER_FIELD_REQUIRES_FORMAT =
+            "qualifier-field options require value.format to be set";
+    public static final String QUALIFIER_FIELD_REQUIRES_NESTED_ROWS =
+            "qualifier-field options require use-nested-rows-mode=true";
 }
