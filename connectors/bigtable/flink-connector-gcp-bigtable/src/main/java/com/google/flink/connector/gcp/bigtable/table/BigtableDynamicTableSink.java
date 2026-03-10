@@ -29,7 +29,7 @@ import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.sink.SinkV2Provider;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
+import org.apache.flink.table.types.logical.LogicalType;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.flink.connector.gcp.bigtable.BigtableSink;
@@ -39,6 +39,8 @@ import com.google.flink.connector.gcp.bigtable.serializers.QualifierConfig;
 import com.google.flink.connector.gcp.bigtable.serializers.RowDataToRowMutationSerializer;
 import com.google.flink.connector.gcp.bigtable.table.config.BigtableChangelogMode;
 import com.google.flink.connector.gcp.bigtable.table.config.BigtableConnectorOptions;
+import com.google.flink.connector.gcp.bigtable.table.format.BigtableRowKeyFormat;
+import com.google.flink.connector.gcp.bigtable.table.format.ToStringRowKeyFormat;
 import com.google.flink.connector.gcp.bigtable.utils.CredentialsFactory;
 import com.google.flink.connector.gcp.bigtable.utils.ErrorMessages;
 
@@ -46,7 +48,6 @@ import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -59,15 +60,6 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * Sink for Table API.
  */
 public class BigtableDynamicTableSink implements DynamicTableSink {
-    /** Row key types that can be automatically converted to a String row key. */
-    static final EnumSet<LogicalTypeRoot> SUPPORTED_ROW_KEY_TYPES =
-            EnumSet.of(
-                    LogicalTypeRoot.VARCHAR,
-                    LogicalTypeRoot.CHAR,
-                    LogicalTypeRoot.BIGINT,
-                    LogicalTypeRoot.INTEGER,
-                    LogicalTypeRoot.SMALLINT,
-                    LogicalTypeRoot.TINYINT);
 
     protected final Integer parallelism;
     protected final ReadableConfig connectorOptions;
@@ -75,42 +67,28 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
     protected final String rowKeyField;
     protected final @Nullable EncodingFormat<SerializationSchema<RowData>> valueEncodingFormat;
     protected final Map<String, String> rawTableOptions;
+    protected final @Nullable BigtableRowKeyFormat rowKeyFormat;
 
     public BigtableDynamicTableSink(
             ResolvedSchema resolvedSchema, ReadableConfig connectorOptions) {
-        this(resolvedSchema, connectorOptions, null, Collections.emptyMap());
+        this(resolvedSchema, connectorOptions, null, Collections.emptyMap(), null);
     }
 
     public BigtableDynamicTableSink(
             ResolvedSchema resolvedSchema,
             ReadableConfig connectorOptions,
             @Nullable EncodingFormat<SerializationSchema<RowData>> valueEncodingFormat,
-            Map<String, String> rawTableOptions) {
-        checkArgument(
-                resolvedSchema.getPrimaryKeyIndexes().length == 1,
-                String.format(
-                        ErrorMessages.MULTIPLE_PRIMARY_KEYS_TEMPLATE,
-                        resolvedSchema.getPrimaryKeyIndexes().length));
-        int rowKeyIndex = resolvedSchema.getPrimaryKeyIndexes()[0];
-        LogicalTypeRoot rowKeyType =
-                resolvedSchema
-                        .getColumn(rowKeyIndex)
-                        .get()
-                        .getDataType()
-                        .getLogicalType()
-                        .getTypeRoot();
-        checkArgument(
-                SUPPORTED_ROW_KEY_TYPES.contains(rowKeyType),
-                String.format(
-                        ErrorMessages.ROW_KEY_STRING_TYPE_TEMPLATE,
-                        resolvedSchema.getColumn(rowKeyIndex).get().getDataType()));
+            Map<String, String> rawTableOptions,
+            @Nullable BigtableRowKeyFormat rowKeyFormat) {
+        int[] pkIndices = resolvedSchema.getPrimaryKeyIndexes();
+        this.rowKeyField = resolvedSchema.getColumn(pkIndices[0]).get().getName();
 
         this.connectorOptions = connectorOptions;
         this.resolvedSchema = resolvedSchema;
         this.parallelism = connectorOptions.get(BigtableConnectorOptions.SINK_PARALLELISM);
-        this.rowKeyField = resolvedSchema.getColumn(rowKeyIndex).get().getName();
         this.valueEncodingFormat = valueEncodingFormat;
         this.rawTableOptions = rawTableOptions != null ? rawTableOptions : Collections.emptyMap();
+        this.rowKeyFormat = rowKeyFormat;
 
         boolean hasQualifierFields =
                 this.rawTableOptions.keySet().stream()
@@ -130,7 +108,8 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                 this.resolvedSchema,
                 this.connectorOptions,
                 this.valueEncodingFormat,
-                this.rawTableOptions);
+                this.rawTableOptions,
+                this.rowKeyFormat);
     }
 
     @Override
@@ -145,7 +124,8 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
         return Objects.equals(resolvedSchema, other.resolvedSchema)
                 && Objects.equals(connectorOptions, other.connectorOptions)
                 && Objects.equals(valueEncodingFormat, other.valueEncodingFormat)
-                && Objects.equals(rawTableOptions, other.rawTableOptions);
+                && Objects.equals(rawTableOptions, other.rawTableOptions)
+                && Objects.equals(rowKeyFormat, other.rowKeyFormat);
     }
 
     @Override
@@ -174,6 +154,15 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                                 connectorOptions.get(BigtableConnectorOptions.CHANGELOG_MODE))
                         != BigtableChangelogMode.INSERT_ONLY;
 
+        // Resolve effective row key format (fall back to default if null)
+        BigtableRowKeyFormat effectiveFormat = this.rowKeyFormat;
+        if (effectiveFormat == null) {
+            int pkIndex = resolvedSchema.getPrimaryKeyIndexes()[0];
+            LogicalType pkType =
+                    resolvedSchema.getColumn(pkIndex).get().getDataType().getLogicalType();
+            effectiveFormat = new ToStringRowKeyFormat(pkIndex, pkType);
+        }
+
         BaseRowMutationSerializer<RowData> serializer;
 
         if (valueEncodingFormat != null) {
@@ -188,6 +177,7 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                         new FormatAwareRowMutationSerializer(
                                 physicalSchema,
                                 rowKeyField,
+                                effectiveFormat,
                                 familySerializers,
                                 qualifierConfigs,
                                 upsertMode);
@@ -201,16 +191,18 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                         FormatAwareRowMutationSerializer.forFlatMode(
                                 physicalSchema,
                                 rowKeyField,
+                                effectiveFormat,
                                 columnFamily,
                                 formatSerializer,
                                 upsertMode);
             }
         } else {
-            // Legacy path (unchanged)
+            // Legacy path
             RowDataToRowMutationSerializer.Builder serializerBuilder =
                     RowDataToRowMutationSerializer.builder()
                             .withSchema(physicalSchema)
                             .withRowKeyField(this.rowKeyField)
+                            .withRowKeyFormat(effectiveFormat)
                             .withUpsertMode(upsertMode);
 
             if (connectorOptions.get(BigtableConnectorOptions.USE_NESTED_ROWS_MODE)) {
@@ -274,7 +266,8 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
     @Override
     public DynamicTableSink copy() {
         return new BigtableDynamicTableSink(
-                resolvedSchema, connectorOptions, valueEncodingFormat, rawTableOptions);
+                resolvedSchema, connectorOptions, valueEncodingFormat, rawTableOptions,
+                rowKeyFormat);
     }
 
     /**

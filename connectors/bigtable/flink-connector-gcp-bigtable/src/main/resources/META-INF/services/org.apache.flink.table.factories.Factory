@@ -14,3 +14,6 @@
 # limitations under the License.
 
 com.google.flink.connector.gcp.bigtable.table.BigtableDynamicTableFactory
+com.google.flink.connector.gcp.bigtable.table.format.ToStringRowKeyFormatFactory
+com.google.flink.connector.gcp.bigtable.table.format.ZeroPaddedRowKeyFormatFactory
+com.google.flink.connector.gcp.bigtable.table.format.CompositeZeroPaddedRowKeyFormatFactory
