@@ -51,6 +51,7 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.mock;
 
@@ -332,6 +333,134 @@ public class BigtableWriterTest {
         assertEquals(1, flushableWriter.getNumBatchFailuresCounter().getCount());
         assertEquals(0, flushableWriter.getNumRecordsOutCounter().getCount());
         assertEquals(0, flushableWriter.getNumEntriesPerFlush().getStatistics().getMax());
+    }
+
+    @Test
+    public void testRecordCountThresholdFlush() throws InterruptedException {
+        BigtableFlushableWriter writer =
+                new BigtableFlushableWriter(client, mockContext, TestingUtils.TABLE, 5, 0L);
+
+        for (int i = 0; i < 5; i++) {
+            RowMutationEntry entry = RowMutationEntry.create("key" + i);
+            entry.setCell(
+                    TestingUtils.COLUMN_FAMILY, "column", TestingUtils.TIMESTAMP, "value" + i);
+            writer.collect(entry);
+        }
+
+        assertEquals(5, writer.getNumRecordsOutCounter().getCount());
+        Row row = client.readRow(TableId.of(TestingUtils.TABLE), "key0");
+        assertNotNull(row);
+    }
+
+    @Test
+    public void testByteSizeThresholdFlush() throws InterruptedException {
+        RowMutationEntry sampleEntry = RowMutationEntry.create("key0");
+        sampleEntry.setCell(
+                TestingUtils.COLUMN_FAMILY, "column", TestingUtils.TIMESTAMP, "value0");
+        int entrySize = BigtableFlushableWriter.getEntryBytesSize(sampleEntry);
+        long maxBytes = (long) entrySize * 3;
+
+        BigtableFlushableWriter writer =
+                new BigtableFlushableWriter(client, mockContext, TestingUtils.TABLE, 0L, maxBytes);
+
+        for (int i = 0; i < 2; i++) {
+            RowMutationEntry entry = RowMutationEntry.create("key" + i);
+            entry.setCell(
+                    TestingUtils.COLUMN_FAMILY, "column", TestingUtils.TIMESTAMP, "value" + i);
+            writer.collect(entry);
+        }
+        assertEquals(0, writer.getNumRecordsOutCounter().getCount());
+
+        RowMutationEntry thirdEntry = RowMutationEntry.create("key2");
+        thirdEntry.setCell(
+                TestingUtils.COLUMN_FAMILY, "column", TestingUtils.TIMESTAMP, "value2");
+        writer.collect(thirdEntry);
+
+        assertEquals(3, writer.getNumRecordsOutCounter().getCount());
+    }
+
+    @Test
+    public void testCheckpointFlushAfterThresholdFlushIsNoOp() throws InterruptedException {
+        BigtableFlushableWriter writer =
+                new BigtableFlushableWriter(client, mockContext, TestingUtils.TABLE, 3, 0L);
+
+        for (int i = 0; i < 3; i++) {
+            RowMutationEntry entry = RowMutationEntry.create("key" + i);
+            entry.setCell(
+                    TestingUtils.COLUMN_FAMILY, "column", TestingUtils.TIMESTAMP, "value" + i);
+            writer.collect(entry);
+        }
+
+        assertEquals(3, writer.getNumRecordsOutCounter().getCount());
+
+        // Explicit flush should be a no-op since auto-flush already happened
+        writer.flush();
+
+        assertEquals(3, writer.getNumRecordsOutCounter().getCount());
+    }
+
+    @Test
+    public void testTimerBasedFlush() throws InterruptedException {
+        BigtableFlushableWriter writer =
+                new BigtableFlushableWriter(client, mockContext, TestingUtils.TABLE);
+
+        for (int i = 0; i < 3; i++) {
+            RowMutationEntry entry = RowMutationEntry.create("timerkey" + i);
+            entry.setCell(
+                    TestingUtils.COLUMN_FAMILY, "column", TestingUtils.TIMESTAMP, "value" + i);
+            writer.collect(entry);
+        }
+
+        // No auto-flush should have happened
+        assertEquals(0, writer.getNumRecordsOutCounter().getCount());
+        assertEquals(0, writer.getNumAutoFlushesCounter().getCount());
+
+        // Manually invoke onTimer
+        writer.onTimer();
+
+        // Records should be flushed and auto-flush counter incremented
+        assertEquals(3, writer.getNumRecordsOutCounter().getCount());
+        assertEquals(1, writer.getNumAutoFlushesCounter().getCount());
+
+        // Verify data in Bigtable
+        for (int i = 0; i < 3; i++) {
+            Row row = client.readRow(TableId.of(TestingUtils.TABLE), "timerkey" + i);
+            assertNotNull(row);
+            assertEquals(
+                    "value" + i,
+                    row.getCells(TestingUtils.COLUMN_FAMILY, "column")
+                            .get(0)
+                            .getValue()
+                            .toStringUtf8());
+        }
+    }
+
+    @Test
+    public void testTimerSkipsFlushWhenEmpty() throws InterruptedException {
+        BigtableFlushableWriter writer =
+                new BigtableFlushableWriter(client, mockContext, TestingUtils.TABLE);
+
+        // Call onTimer with empty buffer
+        writer.onTimer();
+
+        assertEquals(0, writer.getNumRecordsOutCounter().getCount());
+        assertEquals(0, writer.getNumAutoFlushesCounter().getCount());
+    }
+
+    @Test
+    public void testAutoFlushMetricCounter() throws InterruptedException {
+        BigtableFlushableWriter writer =
+                new BigtableFlushableWriter(client, mockContext, TestingUtils.TABLE, 2, 0L);
+
+        for (int i = 0; i < 4; i++) {
+            RowMutationEntry entry = RowMutationEntry.create("key" + i);
+            entry.setCell(
+                    TestingUtils.COLUMN_FAMILY, "column", TestingUtils.TIMESTAMP, "value" + i);
+            writer.collect(entry);
+        }
+
+        assertEquals(2, writer.getNumAutoFlushesCounter().getCount());
+        assertEquals(4, writer.getNumRecordsOutCounter().getCount());
     }
 
     private int bytesToInteger(ByteString byteString) {

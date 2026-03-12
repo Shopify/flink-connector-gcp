@@ -75,6 +75,9 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         additionalOptions.add(BigtableConnectorOptions.CREDENTIALS_KEY);
         additionalOptions.add(BigtableConnectorOptions.CREDENTIALS_ACCESS_TOKEN);
         additionalOptions.add(BigtableConnectorOptions.CHANGELOG_MODE);
+        additionalOptions.add(BigtableConnectorOptions.FLUSH_MAX_RECORDS);
+        additionalOptions.add(BigtableConnectorOptions.FLUSH_MAX_BYTES);
+        additionalOptions.add(BigtableConnectorOptions.FLUSH_INTERVAL);
         additionalOptions.add(BigtableConnectorOptions.VALUE_FORMAT);
         additionalOptions.add(BigtableConnectorOptions.KEY_FORMAT);
 

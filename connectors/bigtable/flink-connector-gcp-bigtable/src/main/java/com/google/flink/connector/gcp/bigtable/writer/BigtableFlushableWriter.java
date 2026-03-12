@@ -19,6 +19,7 @@
 package com.google.flink.connector.gcp.bigtable.writer;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.operators.ProcessingTimeService;
 import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Histogram;
@@ -34,6 +35,8 @@ import com.google.cloud.bigtable.data.v2.models.TableId;
 import com.google.flink.connector.gcp.bigtable.utils.ErrorMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -66,6 +69,11 @@ public class BigtableFlushableWriter {
     private Counter numOutEntryFailuresCounter;
     private Counter numBatchFailuresCounter;
     private Histogram numEntriesPerFlush;
+    private final long flushMaxRecords;
+    private final long flushMaxBytes;
+    private final long flushInterval;
+    @Nullable private ProcessingTimeService processingTimeService;
+    private Counter numAutoFlushesCounter;
 
     private static final Logger logger = LoggerFactory.getLogger(BigtableFlushableWriter.class);
 
@@ -74,6 +82,26 @@ public class BigtableFlushableWriter {
 
     public BigtableFlushableWriter(
             BigtableDataClient client, WriterInitContext sinkInitContext, String table) {
+        this(client, sinkInitContext, table, 0L, 0L, 0L, null);
+    }
+
+    public BigtableFlushableWriter(
+            BigtableDataClient client,
+            WriterInitContext sinkInitContext,
+            String table,
+            long flushMaxRecords,
+            long flushMaxBytes) {
+        this(client, sinkInitContext, table, flushMaxRecords, flushMaxBytes, 0L, null);
+    }
+
+    public BigtableFlushableWriter(
+            BigtableDataClient client,
+            WriterInitContext sinkInitContext,
+            String table,
+            long flushMaxRecords,
+            long flushMaxBytes,
+            long flushInterval,
+            @Nullable ProcessingTimeService processingTimeService) {
         checkNotNull(client);
         checkNotNull(sinkInitContext);
         checkNotNull(table);
@@ -81,6 +109,10 @@ public class BigtableFlushableWriter {
         this.client = client;
         this.table = table;
         this.batcher = client.newBulkMutationBatcher(TableId.of(table));
+        this.flushMaxRecords = flushMaxRecords;
+        this.flushMaxBytes = flushMaxBytes;
+        this.flushInterval = flushInterval;
+        this.processingTimeService = processingTimeService;
 
         // Instantiate Metrics
         this.numRecordsOutCounter =
@@ -91,12 +123,18 @@ public class BigtableFlushableWriter {
                 sinkInitContext.metricGroup().counter("numOutEntryFailuresCounter");
         this.numBatchFailuresCounter =
                 sinkInitContext.metricGroup().counter("numBatchFailuresCounter");
+        this.numAutoFlushesCounter =
+                sinkInitContext.metricGroup().counter("numAutoFlushesCounter");
         this.numEntriesPerFlush =
                 sinkInitContext
                         .metricGroup()
                         .histogram(
                                 "numEntriesPerFlush",
                                 new DescriptiveStatisticsHistogram(HISTOGRAM_WINDOW_SIZE));
+
+        if (processingTimeService != null && flushInterval > 0) {
+            scheduleNextFlush();
+        }
     }
 
     /** Adds RowMuationEntry to Batcher. */
@@ -105,6 +143,45 @@ public class BigtableFlushableWriter {
         batchFutures.add(future);
         totalRecordsBuffer++;
         totalBytesBuffer += getEntryBytesSize(entry);
+
+        if (shouldAutoFlush()) {
+            numAutoFlushesCounter.inc();
+            flush();
+        }
+    }
+
+    private boolean shouldAutoFlush() {
+        if (flushMaxRecords > 0 && totalRecordsBuffer >= flushMaxRecords) {
+            return true;
+        }
+        if (flushMaxBytes > 0 && totalBytesBuffer >= flushMaxBytes) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Called by timer to trigger a time-based flush. */
+    public void onTimer() throws InterruptedException {
+        if (totalRecordsBuffer > 0) {
+            numAutoFlushesCounter.inc();
+            flush();
+        }
+        scheduleNextFlush();
+    }
+
+    private void scheduleNextFlush() {
+        if (processingTimeService != null && flushInterval > 0) {
+            processingTimeService.registerTimer(
+                    processingTimeService.getCurrentProcessingTime() + flushInterval,
+                    timestamp -> {
+                        try {
+                            onTimer();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException(e);
+                        }
+                    });
+        }
     }
 
     /** Sends mutations to Bigtable. */
@@ -178,5 +255,10 @@ public class BigtableFlushableWriter {
     @VisibleForTesting
     Histogram getNumEntriesPerFlush() {
         return numEntriesPerFlush;
+    }
+
+    @VisibleForTesting
+    Counter getNumAutoFlushesCounter() {
+        return numAutoFlushesCounter;
     }
 }

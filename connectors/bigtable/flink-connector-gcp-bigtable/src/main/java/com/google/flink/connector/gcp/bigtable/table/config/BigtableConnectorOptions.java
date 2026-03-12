@@ -98,6 +98,30 @@ public class BigtableConnectorOptions {
                     .withDescription(
                             "Optional. Specifies the GCP access token to use as credentials.");
 
+    public static final ConfigOption<Long> FLUSH_MAX_RECORDS =
+            ConfigOptions.key("flush.max-records")
+                    .longType()
+                    .defaultValue(0L)
+                    .withDescription(
+                            "Optional. Maximum number of records to buffer before flushing. "
+                                    + "0 means disabled (flush only on checkpoint). Default: 0.");
+
+    public static final ConfigOption<Long> FLUSH_MAX_BYTES =
+            ConfigOptions.key("flush.max-bytes")
+                    .longType()
+                    .defaultValue(0L)
+                    .withDescription(
+                            "Optional. Maximum bytes to buffer before flushing. "
+                                    + "0 means disabled (flush only on checkpoint). Default: 0.");
+
+    public static final ConfigOption<Long> FLUSH_INTERVAL =
+            ConfigOptions.key("flush.interval")
+                    .longType()
+                    .defaultValue(0L)
+                    .withDescription(
+                            "Optional. Time interval in milliseconds between automatic flushes. "
+                                    + "0 means disabled (flush only on checkpoint). Default: 0.");
+
     public static final ConfigOption<String> CHANGELOG_MODE =
             ConfigOptions.key("changelog-mode")
                     .stringType()

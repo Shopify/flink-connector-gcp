@@ -18,6 +18,7 @@
 
 package com.google.flink.connector.gcp.bigtable;
 
+import org.apache.flink.api.common.operators.ProcessingTimeService;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.api.connector.sink2.WriterInitContext;
@@ -62,6 +63,12 @@ public abstract class BigtableSink<T> implements Sink<T> {
 
     public abstract @Nullable Long batchSize();
 
+    public abstract @Nullable Long flushMaxRecords();
+
+    public abstract @Nullable Long flushMaxBytes();
+
+    public abstract @Nullable Long flushInterval();
+
     public static <T> Builder<T> builder() {
         return new AutoValue_BigtableSink.Builder<T>().setFlowControl(false);
     }
@@ -85,8 +92,18 @@ public abstract class BigtableSink<T> implements Sink<T> {
             throw new IOException("Failed to initialize serializer", e);
         }
 
+        long maxRecords = flushMaxRecords() != null ? flushMaxRecords() : 0L;
+        long maxBytes = flushMaxBytes() != null ? flushMaxBytes() : 0L;
+        long interval = flushInterval() != null ? flushInterval() : 0L;
+
+        ProcessingTimeService timeService = interval > 0
+                ? sinkInitContext.getProcessingTimeService()
+                : null;
+
         return new BigtableSinkWriter<T>(
-                new BigtableFlushableWriter(client, sinkInitContext, table()),
+                new BigtableFlushableWriter(
+                        client, sinkInitContext, table(),
+                        maxRecords, maxBytes, interval, timeService),
                 serializer(),
                 sinkInitContext);
     }
@@ -126,6 +143,15 @@ public abstract class BigtableSink<T> implements Sink<T> {
 
         /** The number of elements to group in a batch. * */
         public abstract Builder<T> setBatchSize(long batchSize);
+
+        /** Maximum number of records to buffer before flushing. 0 or null disables. */
+        public abstract Builder<T> setFlushMaxRecords(long flushMaxRecords);
+
+        /** Maximum bytes to buffer before flushing. 0 or null disables. */
+        public abstract Builder<T> setFlushMaxBytes(long flushMaxBytes);
+
+        /** Time interval in milliseconds between automatic flushes. 0 or null disables. */
+        public abstract Builder<T> setFlushInterval(long flushInterval);
 
         public abstract BigtableSink<T> build();
     }
