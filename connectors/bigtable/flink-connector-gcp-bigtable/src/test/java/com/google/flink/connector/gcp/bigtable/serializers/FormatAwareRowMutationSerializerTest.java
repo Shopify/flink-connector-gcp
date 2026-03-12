@@ -86,7 +86,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, Collections.emptyMap(), false);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        Collections.emptyMap(),
+                        false);
 
         GenericRowData cf1Row = new GenericRowData(2);
         cf1Row.setField(0, 42L);
@@ -127,7 +132,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, qualifierConfigs, false);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        qualifierConfigs,
+                        false);
 
         GenericRowData pubRow = new GenericRowData(2);
         pubRow.setField(0, 5001L);
@@ -165,7 +175,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, Collections.emptyMap(), false);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        Collections.emptyMap(),
+                        false);
 
         GenericRowData cf1Row = new GenericRowData(1);
         cf1Row.setField(0, StringData.fromString("value1"));
@@ -209,7 +224,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, qualifierConfigs, false);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        qualifierConfigs,
+                        false);
 
         GenericRowData productRow = new GenericRowData(2);
         productRow.setField(0, 7L);
@@ -291,7 +311,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, qualifierConfigs, false);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        qualifierConfigs,
+                        false);
 
         GenericRowData eventRow = new GenericRowData(2);
         eventRow.setField(0, StringData.fromString("click"));
@@ -324,7 +349,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, Collections.emptyMap(), true);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        Collections.emptyMap(),
+                        true);
 
         GenericRowData cf1Row = new GenericRowData(2);
         cf1Row.setField(0, 42L);
@@ -355,7 +385,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, Collections.emptyMap(), true);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        Collections.emptyMap(),
+                        true);
 
         GenericRowData cf1Row = new GenericRowData(2);
         cf1Row.setField(0, 42L);
@@ -387,7 +422,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, Collections.emptyMap(), true);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        Collections.emptyMap(),
+                        true);
 
         GenericRowData record = new GenericRowData(3);
         record.setField(0, StringData.fromString("row1"));
@@ -436,7 +476,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, qualifierConfigs, true);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        qualifierConfigs,
+                        true);
 
         // DELETE: product is null, publications has id=5001
         GenericRowData pubRow = new GenericRowData(2);
@@ -487,7 +532,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
-                        schema, "rowKey", STRING_KEY_FORMAT, "product", rowData -> "bytes".getBytes(), true);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        "product",
+                        rowData -> "bytes".getBytes(),
+                        true);
 
         GenericRowData record = new GenericRowData(3);
         record.setField(0, StringData.fromString("row1"));
@@ -518,7 +568,12 @@ public class FormatAwareRowMutationSerializerTest {
         // upsertMode = false
         FormatAwareRowMutationSerializer serializer =
                 new FormatAwareRowMutationSerializer(
-                        schema, "rowKey", STRING_KEY_FORMAT, familySerializers, Collections.emptyMap(), false);
+                        schema,
+                        "rowKey",
+                        STRING_KEY_FORMAT,
+                        familySerializers,
+                        Collections.emptyMap(),
+                        false);
 
         GenericRowData cf1Row = new GenericRowData(1);
         cf1Row.setField(0, StringData.fromString("value"));

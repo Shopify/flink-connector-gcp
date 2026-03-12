@@ -25,11 +25,11 @@ import org.apache.flink.table.types.logical.LogicalType;
 import java.util.Map;
 
 /**
- * Factory SPI for row key formats. Discovered via Flink's ServiceLoader mechanism using the
- * {@code key.format} option, analogous to Kafka's {@code key.format}.
+ * Factory SPI for row key formats. Discovered via Flink's ServiceLoader mechanism using the {@code
+ * key.format} option, analogous to Kafka's {@code key.format}.
  *
- * <p>Implementations must be registered in
- * {@code META-INF/services/org.apache.flink.table.factories.Factory}.
+ * <p>Implementations must be registered in {@code
+ * META-INF/services/org.apache.flink.table.factories.Factory}.
  */
 public interface BigtableRowKeyFormatFactory extends Factory {
 

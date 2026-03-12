@@ -92,8 +92,7 @@ public class CompositeZeroPaddedRowKeyFormat implements BigtableRowKeyFormat {
                 return record.getByte(index);
             default:
                 throw new IllegalArgumentException(
-                        "Unsupported row key type for 'composite-zero-padded' format: "
-                                + typeRoot);
+                        "Unsupported row key type for 'composite-zero-padded' format: " + typeRoot);
         }
     }
 }

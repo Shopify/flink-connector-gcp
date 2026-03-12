@@ -223,6 +223,11 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                         .setFlowControl(connectorOptions.get(BigtableConnectorOptions.FLOW_CONTROL))
                         .setSerializer(serializer);
 
+        long flushMaxRecords = connectorOptions.get(BigtableConnectorOptions.FLUSH_MAX_RECORDS);
+        if (flushMaxRecords > 0) {
+            sinkBuilder.setFlushMaxRecords(flushMaxRecords);
+        }
+
         if (connectorOptions.getOptional(BigtableConnectorOptions.APP_PROFILE_ID).isPresent()) {
             sinkBuilder.setAppProfileId(
                     connectorOptions.get(BigtableConnectorOptions.APP_PROFILE_ID));
@@ -266,7 +271,10 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
     @Override
     public DynamicTableSink copy() {
         return new BigtableDynamicTableSink(
-                resolvedSchema, connectorOptions, valueEncodingFormat, rawTableOptions,
+                resolvedSchema,
+                connectorOptions,
+                valueEncodingFormat,
+                rawTableOptions,
                 rowKeyFormat);
     }
 

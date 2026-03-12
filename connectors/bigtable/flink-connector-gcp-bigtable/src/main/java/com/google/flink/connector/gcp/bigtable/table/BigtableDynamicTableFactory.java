@@ -76,6 +76,7 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         additionalOptions.add(BigtableConnectorOptions.CREDENTIALS_KEY);
         additionalOptions.add(BigtableConnectorOptions.CREDENTIALS_ACCESS_TOKEN);
         additionalOptions.add(BigtableConnectorOptions.CHANGELOG_MODE);
+        additionalOptions.add(BigtableConnectorOptions.FLUSH_MAX_RECORDS);
         additionalOptions.add(BigtableConnectorOptions.VALUE_FORMAT);
         additionalOptions.add(BigtableConnectorOptions.KEY_FORMAT);
 
@@ -148,11 +149,7 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         String[] pkNames = new String[pkIndices.length];
         for (int i = 0; i < pkIndices.length; i++) {
             pkTypes[i] =
-                    resolvedSchema
-                            .getColumn(pkIndices[i])
-                            .get()
-                            .getDataType()
-                            .getLogicalType();
+                    resolvedSchema.getColumn(pkIndices[i]).get().getDataType().getLogicalType();
             pkNames[i] = resolvedSchema.getColumn(pkIndices[i]).get().getName();
         }
 

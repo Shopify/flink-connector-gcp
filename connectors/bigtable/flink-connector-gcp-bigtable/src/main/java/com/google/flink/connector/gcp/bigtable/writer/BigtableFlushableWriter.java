@@ -23,25 +23,17 @@ import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Histogram;
 import org.apache.flink.runtime.metrics.DescriptiveStatisticsHistogram;
-import org.apache.flink.util.InstantiationUtil;
 
 import com.google.api.core.ApiFuture;
 import com.google.api.gax.batching.Batcher;
-import com.google.api.gax.batching.BatchingException;
 import com.google.cloud.bigtable.data.v2.BigtableDataClient;
 import com.google.cloud.bigtable.data.v2.models.RowMutationEntry;
 import com.google.cloud.bigtable.data.v2.models.TableId;
-import com.google.flink.connector.gcp.bigtable.utils.ErrorMessages;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -59,21 +51,26 @@ public class BigtableFlushableWriter {
 
     List<ApiFuture<Void>> batchFutures = new ArrayList<>();
 
-    private Long totalRecordsBuffer = 0L;
-    private Long totalBytesBuffer = 0L;
+    private long totalRecordsBuffer = 0L;
     private Counter numRecordsOutCounter;
-    private Counter numBytesOutCounter;
     private Counter numOutEntryFailuresCounter;
     private Counter numBatchFailuresCounter;
     private Histogram numEntriesPerFlush;
+    private final long flushMaxRecords;
+    private Counter numAutoFlushesCounter;
 
-    private static final Logger logger = LoggerFactory.getLogger(BigtableFlushableWriter.class);
-
-    private static final Integer BATCHER_CLOSE_TIMEOUT_SECONDS = 60;
     private static final Integer HISTOGRAM_WINDOW_SIZE = 100;
 
     public BigtableFlushableWriter(
             BigtableDataClient client, WriterInitContext sinkInitContext, String table) {
+        this(client, sinkInitContext, table, 0L);
+    }
+
+    public BigtableFlushableWriter(
+            BigtableDataClient client,
+            WriterInitContext sinkInitContext,
+            String table,
+            long flushMaxRecords) {
         checkNotNull(client);
         checkNotNull(sinkInitContext);
         checkNotNull(table);
@@ -81,16 +78,16 @@ public class BigtableFlushableWriter {
         this.client = client;
         this.table = table;
         this.batcher = client.newBulkMutationBatcher(TableId.of(table));
+        this.flushMaxRecords = flushMaxRecords;
 
         // Instantiate Metrics
         this.numRecordsOutCounter =
                 sinkInitContext.metricGroup().getIOMetricGroup().getNumRecordsOutCounter();
-        this.numBytesOutCounter =
-                sinkInitContext.metricGroup().getIOMetricGroup().getNumBytesOutCounter();
         this.numOutEntryFailuresCounter =
                 sinkInitContext.metricGroup().counter("numOutEntryFailuresCounter");
         this.numBatchFailuresCounter =
                 sinkInitContext.metricGroup().counter("numBatchFailuresCounter");
+        this.numAutoFlushesCounter = sinkInitContext.metricGroup().counter("numAutoFlushesCounter");
         this.numEntriesPerFlush =
                 sinkInitContext
                         .metricGroup()
@@ -104,37 +101,52 @@ public class BigtableFlushableWriter {
         ApiFuture<Void> future = batcher.add(entry);
         batchFutures.add(future);
         totalRecordsBuffer++;
-        totalBytesBuffer += getEntryBytesSize(entry);
+
+        if (shouldAutoFlush()) {
+            numAutoFlushesCounter.inc();
+            flush();
+        }
+    }
+
+    private boolean shouldAutoFlush() {
+        return flushMaxRecords > 0 && totalRecordsBuffer >= flushMaxRecords;
     }
 
     /** Sends mutations to Bigtable. */
     public void flush() throws InterruptedException {
-        try {
-            batcher.close(Duration.ofSeconds(BATCHER_CLOSE_TIMEOUT_SECONDS));
-            // Update metrics
-            this.numEntriesPerFlush.update(totalRecordsBuffer);
-            this.numRecordsOutCounter.inc(totalRecordsBuffer);
-            this.numBytesOutCounter.inc(totalBytesBuffer);
-            // Recreate client and clear metrics
-            batcher = client.newBulkMutationBatcher(TableId.of(this.table));
+        batcher.flush();
+
+        // Check individual futures for failures
+        List<Throwable> entryFailures = new ArrayList<>();
+        for (ApiFuture<Void> future : batchFutures) {
+            try {
+                future.get();
+            } catch (CancellationException | ExecutionException entryException) {
+                this.numOutEntryFailuresCounter.inc();
+                entryFailures.add(entryException);
+            }
+        }
+
+        if (!entryFailures.isEmpty()) {
+            this.numBatchFailuresCounter.inc();
+            // Clear state before throwing — batcher is still alive
             batchFutures.clear();
             totalRecordsBuffer = 0L;
-            totalBytesBuffer = 0L;
-        } catch (BatchingException batchingException) {
-            this.numBatchFailuresCounter.inc();
-            for (ApiFuture<Void> future : batchFutures) {
-                try {
-                    future.get();
-                } catch (CancellationException
-                        | ExecutionException
-                        | InterruptedException entryException) {
-                    this.numOutEntryFailuresCounter.inc();
-                }
-            }
-            throw new RuntimeException(batchingException.getMessage());
-        } catch (TimeoutException timeoutException) {
-            throw new RuntimeException(timeoutException.getMessage());
+            RuntimeException ex =
+                    new RuntimeException(
+                            "Batch flush had " + entryFailures.size() + " entry failures",
+                            entryFailures.get(0));
+            entryFailures.subList(1, entryFailures.size()).forEach(ex::addSuppressed);
+            throw ex;
         }
+
+        // Update metrics
+        this.numEntriesPerFlush.update(totalRecordsBuffer);
+        this.numRecordsOutCounter.inc(totalRecordsBuffer);
+
+        // Clear state (no batcher recreation needed)
+        batchFutures.clear();
+        totalRecordsBuffer = 0L;
     }
 
     /** Send outstanding mutations and closes clients. */
@@ -144,25 +156,9 @@ public class BigtableFlushableWriter {
         client.close();
     }
 
-    /** Calculate total bytes per entry. */
-    @VisibleForTesting
-    static int getEntryBytesSize(RowMutationEntry entry) {
-        try {
-            return InstantiationUtil.serializeObject(entry).length;
-        } catch (IOException e) {
-            logger.warn(ErrorMessages.METRICS_ENTRY_SERIALIZATION_WARNING + e.getMessage());
-            return 0;
-        }
-    }
-
     @VisibleForTesting
     Counter getNumRecordsOutCounter() {
         return numRecordsOutCounter;
-    }
-
-    @VisibleForTesting
-    Counter getNumBytesOutCounter() {
-        return numBytesOutCounter;
     }
 
     @VisibleForTesting
@@ -178,5 +174,10 @@ public class BigtableFlushableWriter {
     @VisibleForTesting
     Histogram getNumEntriesPerFlush() {
         return numEntriesPerFlush;
+    }
+
+    @VisibleForTesting
+    Counter getNumAutoFlushesCounter() {
+        return numAutoFlushesCounter;
     }
 }

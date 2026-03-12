@@ -62,6 +62,8 @@ public abstract class BigtableSink<T> implements Sink<T> {
 
     public abstract @Nullable Long batchSize();
 
+    public abstract @Nullable Long flushMaxRecords();
+
     public static <T> Builder<T> builder() {
         return new AutoValue_BigtableSink.Builder<T>().setFlowControl(false);
     }
@@ -85,8 +87,10 @@ public abstract class BigtableSink<T> implements Sink<T> {
             throw new IOException("Failed to initialize serializer", e);
         }
 
+        long maxRecords = flushMaxRecords() != null ? flushMaxRecords() : 0L;
+
         return new BigtableSinkWriter<T>(
-                new BigtableFlushableWriter(client, sinkInitContext, table()),
+                new BigtableFlushableWriter(client, sinkInitContext, table(), maxRecords),
                 serializer(),
                 sinkInitContext);
     }
@@ -126,6 +130,9 @@ public abstract class BigtableSink<T> implements Sink<T> {
 
         /** The number of elements to group in a batch. * */
         public abstract Builder<T> setBatchSize(long batchSize);
+
+        /** Maximum number of records to buffer before flushing. 0 or null disables. */
+        public abstract Builder<T> setFlushMaxRecords(long flushMaxRecords);
 
         public abstract BigtableSink<T> build();
     }

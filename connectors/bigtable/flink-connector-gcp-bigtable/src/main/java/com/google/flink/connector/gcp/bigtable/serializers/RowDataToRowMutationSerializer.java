@@ -509,8 +509,7 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
                         ErrorMessages.COLUMN_FAMILY_OR_NESTED_ROWS_REQUIRED);
             }
             return new RowDataToRowMutationSerializer(
-                    schema, rowKeyField, useNestedRowsMode, columnFamily, upsertMode,
-                    rowKeyFormat);
+                    schema, rowKeyField, useNestedRowsMode, columnFamily, upsertMode, rowKeyFormat);
         }
     }
 }

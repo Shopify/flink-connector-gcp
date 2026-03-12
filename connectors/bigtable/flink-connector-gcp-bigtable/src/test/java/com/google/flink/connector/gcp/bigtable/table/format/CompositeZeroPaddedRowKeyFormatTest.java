@@ -53,8 +53,7 @@ public class CompositeZeroPaddedRowKeyFormatTest {
                         new LogicalType[] {new BigIntType(), new VarCharType(), new IntType()},
                         new int[] {10, 0, 8},
                         "#");
-        GenericRowData row =
-                GenericRowData.of(12345L, StringData.fromString("electronics"), 42);
+        GenericRowData row = GenericRowData.of(12345L, StringData.fromString("electronics"), 42);
         assertEquals("0000012345#electronics#00000042", format.format(row));
     }
 
@@ -68,8 +67,7 @@ public class CompositeZeroPaddedRowKeyFormatTest {
                         new int[] {0, 0},
                         "#");
         GenericRowData row =
-                GenericRowData.of(
-                        StringData.fromString("abc"), StringData.fromString("def"));
+                GenericRowData.of(StringData.fromString("abc"), StringData.fromString("def"));
         assertEquals("abc#def", format.format(row));
     }
 
@@ -89,10 +87,7 @@ public class CompositeZeroPaddedRowKeyFormatTest {
     public void testSingleFieldComposite() {
         CompositeZeroPaddedRowKeyFormat format =
                 new CompositeZeroPaddedRowKeyFormat(
-                        new int[] {0},
-                        new LogicalType[] {new BigIntType()},
-                        new int[] {10},
-                        "#");
+                        new int[] {0}, new LogicalType[] {new BigIntType()}, new int[] {10}, "#");
         GenericRowData row = GenericRowData.of(12345L, StringData.fromString("data"));
         assertEquals("0000012345", format.format(row));
     }

@@ -129,8 +129,7 @@ public class RowKeyFormatIntegrationTest {
         return new ResolvedSchema(
                 columns,
                 Collections.emptyList(),
-                UniqueConstraint.primaryKey(
-                        "pk", Arrays.asList(TestingUtils.ROW_KEY_FIELD)));
+                UniqueConstraint.primaryKey("pk", Arrays.asList(TestingUtils.ROW_KEY_FIELD)));
     }
 
     private static ResolvedSchema getNumericPkSchema() {
@@ -153,8 +152,7 @@ public class RowKeyFormatIntegrationTest {
         return new ResolvedSchema(
                 columns,
                 Collections.emptyList(),
-                UniqueConstraint.primaryKey(
-                        "pk", Arrays.asList("shop_id", "product_id")));
+                UniqueConstraint.primaryKey("pk", Arrays.asList("shop_id", "product_id")));
     }
 
     private static Map<String, String> getRequiredOptions() {
