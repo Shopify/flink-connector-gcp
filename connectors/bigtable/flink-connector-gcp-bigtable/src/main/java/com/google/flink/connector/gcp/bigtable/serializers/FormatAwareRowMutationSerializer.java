@@ -22,7 +22,6 @@ import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.table.api.DataTypes.Field;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.utils.ProjectedRowData;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.LogicalTypeFamily;
@@ -30,15 +29,14 @@ import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.types.RowKind;
 
 import com.google.cloud.bigtable.data.v2.models.RowMutationEntry;
+import com.google.flink.connector.gcp.bigtable.table.format.BigtableRowKeyFormat;
 import com.google.flink.connector.gcp.bigtable.utils.BigtableUtils;
 import com.google.protobuf.ByteString;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -56,8 +54,7 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
 
     private static final String DEFAULT_QUALIFIER = "payload";
 
-    private final int rowKeyIndex;
-    private final LogicalTypeRoot rowKeyTypeRoot;
+    private final BigtableRowKeyFormat rowKeyFormat;
     private final Map<Integer, String> indexToFamily;
     private final Map<Integer, Integer> indexToArity;
     private final Map<String, SerializationSchema<RowData>> familySerializers;
@@ -68,34 +65,34 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
     private final boolean flatMode;
     private final @Nullable String flatColumnFamily;
     private final @Nullable SerializationSchema<RowData> flatSerializer;
-    private final @Nullable int[] flatProjection;
 
     /**
-     * Creates a serializer for flat mode (single column family). The entire row (minus row key) is
-     * serialized as a single blob under the "_value" qualifier.
+     * Creates a serializer for flat mode (single column family). The entire row is serialized as a
+     * single blob under the "payload" qualifier.
      */
     public static FormatAwareRowMutationSerializer forFlatMode(
             DataType physicalDataType,
-            String rowKeyField,
+            BigtableRowKeyFormat rowKeyFormat,
             String columnFamily,
             SerializationSchema<RowData> serializer,
             boolean upsertMode) {
         return new FormatAwareRowMutationSerializer(
-                physicalDataType, rowKeyField, columnFamily, serializer, upsertMode);
+                physicalDataType, rowKeyFormat, columnFamily, serializer, upsertMode);
     }
 
     private FormatAwareRowMutationSerializer(
             DataType physicalDataType,
-            String rowKeyField,
+            BigtableRowKeyFormat rowKeyFormat,
             String columnFamily,
             SerializationSchema<RowData> serializer,
             boolean upsertMode) {
         checkNotNull(physicalDataType, "physicalDataType must not be null");
-        checkNotNull(rowKeyField, "rowKeyField must not be null");
+        checkNotNull(rowKeyFormat, "rowKeyFormat must not be null");
         checkNotNull(columnFamily, "columnFamily must not be null");
         checkNotNull(serializer, "serializer must not be null");
 
         this.upsertMode = upsertMode;
+        this.rowKeyFormat = rowKeyFormat;
         this.flatMode = true;
         this.flatColumnFamily = columnFamily;
         this.flatSerializer = serializer;
@@ -103,69 +100,38 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
         this.qualifierConfigs = Collections.emptyMap();
         this.indexToFamily = Collections.emptyMap();
         this.indexToArity = Collections.emptyMap();
-
-        // Resolve row key index and build projection array
-        int resolvedRowKeyIndex = -1;
-        LogicalTypeRoot resolvedRowKeyTypeRoot = null;
-        List<Integer> projection = new ArrayList<>();
-        int index = 0;
-        for (Field field : DataType.getFields(physicalDataType)) {
-            if (field.getName().equals(rowKeyField)) {
-                resolvedRowKeyIndex = index;
-                resolvedRowKeyTypeRoot = field.getDataType().getLogicalType().getTypeRoot();
-            } else {
-                projection.add(index);
-            }
-            index++;
-        }
-        checkNotNull(
-                resolvedRowKeyIndex >= 0 ? resolvedRowKeyIndex : null,
-                String.format("Row key field '%s' not found in schema", rowKeyField));
-        this.rowKeyIndex = resolvedRowKeyIndex;
-        this.rowKeyTypeRoot = resolvedRowKeyTypeRoot;
-        this.flatProjection = projection.stream().mapToInt(Integer::intValue).toArray();
     }
 
     public FormatAwareRowMutationSerializer(
             DataType physicalDataType,
-            String rowKeyField,
+            BigtableRowKeyFormat rowKeyFormat,
             Map<String, SerializationSchema<RowData>> familySerializers,
             Map<String, QualifierConfig> qualifierConfigs,
             boolean upsertMode) {
         checkNotNull(physicalDataType, "physicalDataType must not be null");
-        checkNotNull(rowKeyField, "rowKeyField must not be null");
+        checkNotNull(rowKeyFormat, "rowKeyFormat must not be null");
         checkNotNull(familySerializers, "familySerializers must not be null");
         checkNotNull(qualifierConfigs, "qualifierConfigs must not be null");
 
         this.upsertMode = upsertMode;
+        this.rowKeyFormat = rowKeyFormat;
         this.familySerializers = familySerializers;
         this.qualifierConfigs = qualifierConfigs;
         this.indexToFamily = new HashMap<>();
         this.indexToArity = new HashMap<>();
 
-        int resolvedRowKeyIndex = -1;
-        LogicalTypeRoot resolvedRowKeyTypeRoot = null;
         int index = 0;
         for (Field field : DataType.getFields(physicalDataType)) {
-            if (field.getName().equals(rowKeyField)) {
-                resolvedRowKeyIndex = index;
-                resolvedRowKeyTypeRoot = field.getDataType().getLogicalType().getTypeRoot();
-            } else {
+            if (field.getDataType().getLogicalType().is(LogicalTypeRoot.ROW)) {
                 indexToFamily.put(index, field.getName());
                 indexToArity.put(index, DataType.getFields(field.getDataType()).size());
             }
             index++;
         }
-        checkNotNull(
-                resolvedRowKeyIndex >= 0 ? resolvedRowKeyIndex : null,
-                String.format("Row key field '%s' not found in schema", rowKeyField));
-        this.rowKeyIndex = resolvedRowKeyIndex;
-        this.rowKeyTypeRoot = resolvedRowKeyTypeRoot;
 
         this.flatMode = false;
         this.flatColumnFamily = null;
         this.flatSerializer = null;
-        this.flatProjection = null;
     }
 
     @Override
@@ -191,16 +157,12 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
             }
         }
 
-        String rowKey =
-                RowDataToRowMutationSerializer.extractRowKeyAsString(
-                        record, rowKeyIndex, rowKeyTypeRoot);
+        String rowKey = rowKeyFormat.format(record);
         RowMutationEntry entry = RowMutationEntry.create(rowKey);
 
         if (flatMode) {
-            // Flat mode: project out row key, serialize entire projected row as one blob
-            ProjectedRowData projected = ProjectedRowData.from(flatProjection);
-            projected.replaceRow(record);
-            byte[] value = flatSerializer.serialize(projected);
+            // Flat mode: serialize entire row as one blob
+            byte[] value = flatSerializer.serialize(record);
             entry.setCell(
                     flatColumnFamily,
                     ByteString.copyFromUtf8(DEFAULT_QUALIFIER),
@@ -211,8 +173,8 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
 
         // Nested mode
         for (int i = 0; i < record.getArity(); i++) {
-            if (i == rowKeyIndex) {
-                continue;
+            if (!indexToFamily.containsKey(i)) {
+                continue; // Skip scalar fields (including row key)
             }
             if (record.isNullAt(i)) {
                 continue;
@@ -245,9 +207,7 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
     }
 
     private RowMutationEntry serializeDelete(RowData record) {
-        String rowKey =
-                RowDataToRowMutationSerializer.extractRowKeyAsString(
-                        record, rowKeyIndex, rowKeyTypeRoot);
+        String rowKey = rowKeyFormat.format(record);
         RowMutationEntry entry = RowMutationEntry.create(rowKey);
 
         if (flatMode) {

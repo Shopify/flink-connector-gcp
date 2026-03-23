@@ -23,6 +23,7 @@ import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.format.EncodingFormat;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.data.RowData;
@@ -32,11 +33,13 @@ import org.apache.flink.table.factories.SerializationFormatFactory;
 
 import com.google.flink.connector.gcp.bigtable.table.config.BigtableChangelogMode;
 import com.google.flink.connector.gcp.bigtable.table.config.BigtableConnectorOptions;
+import com.google.flink.connector.gcp.bigtable.table.format.BigtableRowKeyFormat;
+import com.google.flink.connector.gcp.bigtable.table.format.BigtableRowKeyFormatFactory;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /** Factory class to create configured instances of {@link BigtableDynamicTableSink}. */
 @Internal
@@ -73,6 +76,7 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         additionalOptions.add(BigtableConnectorOptions.CREDENTIALS_ACCESS_TOKEN);
         additionalOptions.add(BigtableConnectorOptions.CHANGELOG_MODE);
         additionalOptions.add(BigtableConnectorOptions.VALUE_FORMAT);
+        additionalOptions.add(BigtableConnectorOptions.KEY_FORMAT);
 
         return additionalOptions;
     }
@@ -86,39 +90,61 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
                 helper.discoverOptionalEncodingFormat(
                         SerializationFormatFactory.class, BigtableConnectorOptions.VALUE_FORMAT);
 
-        // Collect prefixes for dynamic qualifier-field options (e.g. "nested2.qualifier-field"
-        // has prefix "nested2."). validateExcept uses startsWith matching, so we extract the
-        // prefix portion of each qualifier-field key.
-        Set<String> qualifierFieldPrefixes =
-                context.getCatalogTable().getOptions().keySet().stream()
-                        .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX))
-                        .map(
-                                k ->
-                                        k.substring(
-                                                        0,
-                                                        k.length()
-                                                                - BigtableConnectorOptions
-                                                                        .QUALIFIER_FIELD_SUFFIX
-                                                                        .length())
-                                                + ".")
-                        .collect(Collectors.toSet());
+        // Collect prefixes for dynamic options that FactoryUtil doesn't know about
+        Set<String> dynamicPrefixes = new HashSet<>();
 
-        if (qualifierFieldPrefixes.isEmpty()) {
-            helper.validate();
-        } else {
-            helper.validateExcept(qualifierFieldPrefixes.toArray(new String[0]));
-        }
+        // qualifier-field prefixes
+        context.getCatalogTable().getOptions().keySet().stream()
+                .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX))
+                .map(
+                        k ->
+                                k.substring(
+                                                0,
+                                                k.length()
+                                                        - BigtableConnectorOptions
+                                                                .QUALIFIER_FIELD_SUFFIX
+                                                                .length())
+                                        + ".")
+                .forEach(dynamicPrefixes::add);
+
+        // key format prefixes — covers all current and future key format options
+        dynamicPrefixes.add("key.");
+
+        // Always have at least "key." prefix, plus any qualifier-field prefixes
+        helper.validateExcept(dynamicPrefixes.toArray(new String[0]));
 
         final ReadableConfig tableOptions = helper.getOptions();
         final String changelogMode = tableOptions.get(BigtableConnectorOptions.CHANGELOG_MODE);
+        final Map<String, String> rawTableOptions = context.getCatalogTable().getOptions();
 
         validateChangelogMode(changelogMode, context);
 
+        // Discover and create row key format
+        ResolvedSchema resolvedSchema = context.getCatalogTable().getResolvedSchema();
+        BigtableRowKeyFormat rowKeyFormat =
+                createRowKeyFormat(tableOptions, rawTableOptions, resolvedSchema);
+
         return new BigtableDynamicTableSink(
-                context.getCatalogTable().getResolvedSchema(),
+                resolvedSchema,
                 tableOptions,
                 valueEncodingFormat.orElse(null),
-                context.getCatalogTable().getOptions());
+                rawTableOptions,
+                rowKeyFormat);
+    }
+
+    private static BigtableRowKeyFormat createRowKeyFormat(
+            ReadableConfig tableOptions,
+            Map<String, String> rawTableOptions,
+            ResolvedSchema resolvedSchema) {
+        String formatIdentifier = tableOptions.get(BigtableConnectorOptions.KEY_FORMAT);
+
+        BigtableRowKeyFormatFactory formatFactory =
+                FactoryUtil.discoverFactory(
+                        Thread.currentThread().getContextClassLoader(),
+                        BigtableRowKeyFormatFactory.class,
+                        formatIdentifier);
+
+        return formatFactory.createRowKeyFormat(tableOptions, rawTableOptions, resolvedSchema);
     }
 
     private static void validateChangelogMode(String changelogMode, Context context) {

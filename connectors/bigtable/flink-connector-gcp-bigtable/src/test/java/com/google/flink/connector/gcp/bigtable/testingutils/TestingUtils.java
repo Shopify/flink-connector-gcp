@@ -91,6 +91,34 @@ public class TestingUtils {
         return entry;
     }
 
+    /**
+     * Gets test row mutation entry for flat mode that includes ALL columns (including row key).
+     * Used by RowDataToRowMutationSerializer tests since the serializer no longer skips the row
+     * key in flat mode.
+     */
+    public static RowMutationEntry getTestRowMutationEntryWithRowKey() {
+        RowMutationEntry entry = RowMutationEntry.create(ROW_KEY_VALUE);
+        entry.setCell(
+                        COLUMN_FAMILY,
+                        ByteString.copyFromUtf8(ROW_KEY_FIELD),
+                        TIMESTAMP,
+                        ByteString.copyFrom(ROW_KEY_VALUE.getBytes()))
+                .setCell(
+                        COLUMN_FAMILY,
+                        ByteString.copyFromUtf8(STRING_FIELD),
+                        TIMESTAMP,
+                        ByteString.copyFrom(STRING_VALUE.getBytes()))
+                .setCell(
+                        COLUMN_FAMILY,
+                        ByteString.copyFromUtf8(INTEGER_FIELD),
+                        TIMESTAMP,
+                        ByteString.copyFrom(
+                                ByteBuffer.allocate(Integer.BYTES)
+                                        .putInt(INTEGER_VALUE)
+                                        .array()));
+        return entry;
+    }
+
     public static void assertRowMutationEntryEquality(
             RowMutationEntry serializedEntry, RowMutationEntry wantedEntry) {
         assertEquals(wantedEntry.toProto().getRowKey(), serializedEntry.toProto().getRowKey());

@@ -117,5 +117,13 @@ public class BigtableConnectorOptions {
                             "The format for encoding cell values. "
                                     + "When set, discovers a SerializationFormatFactory via SPI.");
 
+    public static final ConfigOption<String> KEY_FORMAT =
+            ConfigOptions.key("key" + FactoryUtil.FORMAT_SUFFIX)
+                    .stringType()
+                    .defaultValue("to-string")
+                    .withDescription(
+                            "The format for encoding the row key from primary key columns. "
+                                    + "Built-in formats: 'to-string' (default), 'zero-padded', 'composite-zero-padded'.");
+
     public static final String QUALIFIER_FIELD_SUFFIX = ".qualifier-field";
 }

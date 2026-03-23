@@ -33,6 +33,8 @@ import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.types.RowKind;
 
 import com.google.cloud.bigtable.data.v2.models.RowMutationEntry;
+import com.google.flink.connector.gcp.bigtable.table.format.BigtableRowKeyFormat;
+import com.google.flink.connector.gcp.bigtable.table.format.ToStringRowKeyFormat;
 import com.google.flink.connector.gcp.bigtable.utils.BigtableUtils;
 import com.google.flink.connector.gcp.bigtable.utils.ErrorMessages;
 import com.google.protobuf.ByteString;
@@ -56,11 +58,13 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <p>This serializer supports two modes of operation:
  *
  * <ol>
- *   <li><b>Column Family Mode:</b> All fields in the {@link RowData} are written to a single
- *       specified column family. Nested fields are not supported in this mode.
+ *   <li><b>Column Family Mode:</b> All fields in the {@link RowData} (including the row key
+ *       field) are written to a single specified column family. Nested fields are not supported
+ *       in this mode.
  *   <li><b>Nested Rows Mode:</b> Each field in the {@link RowData} (except the row key field)
  *       represents a separate column family, and its value must be another {@link RowData}
- *       containing the columns for that family. Only single nested rows are supported.
+ *       containing the columns for that family. The row key field is skipped because it is a
+ *       scalar, not a ROW type. Only single nested rows are supported.
  * </ol>
  *
  * <p>The serialization process involves extracting data from the {@link RowData} fields and
@@ -83,6 +87,8 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
     public Integer rowKeyIndex;
     public final boolean upsertMode;
     private LogicalTypeRoot rowKeyTypeRoot;
+    private LogicalType rowKeyLogicalType;
+    private final BigtableRowKeyFormat rowKeyFormat;
 
     private final HashMap<String, DataType> columnTypeMap = new HashMap<String, DataType>();
     private final HashMap<Integer, String> indexMap = new HashMap<Integer, String>();
@@ -117,7 +123,8 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
             String rowKeyField,
             Boolean useNestedRowsMode,
             @Nullable String columnFamily,
-            boolean upsertMode) {
+            boolean upsertMode,
+            @Nullable BigtableRowKeyFormat rowKeyFormat) {
         this.columnFamily = columnFamily;
         this.useNestedRowsMode = useNestedRowsMode;
         this.rowKeyField = rowKeyField;
@@ -130,12 +137,19 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
                 this.rowKeyIndex,
                 String.format(
                         ErrorMessages.MISSING_ROW_KEY_TEMPLATE, rowKeyField, schema.toString()));
+
+        // Use provided format or fall back to default
+        if (rowKeyFormat != null) {
+            this.rowKeyFormat = rowKeyFormat;
+        } else {
+            this.rowKeyFormat = new ToStringRowKeyFormat(this.rowKeyIndex, this.rowKeyLogicalType);
+        }
     }
 
     @Override
     @Nullable
     public RowMutationEntry serialize(RowData record, SinkWriter.Context context) {
-        String rowKey = extractRowKeyAsString(record, this.rowKeyIndex, this.rowKeyTypeRoot);
+        String rowKey = rowKeyFormat.format(record);
 
         if (upsertMode) {
             RowKind kind = record.getRowKind();
@@ -226,18 +240,14 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
             HashMap<Integer, String> innerMap,
             SinkWriter.Context context) {
         for (int i = 0; i < record.getArity(); i++) {
-            // Skip serializing the rowKey
-            Boolean isRowKey = (innerMap == this.indexMap) && (i == this.rowKeyIndex);
-            if (!isRowKey) {
-                String column = innerMap.get(i);
-                byte[] valueBytes =
-                        convertFieldToBytes(record, i, columnTypeMap.get(column).getLogicalType());
-                entry.setCell(
-                        columnFamily,
-                        ByteString.copyFromUtf8(column),
-                        BigtableUtils.getTimestamp(context),
-                        ByteString.copyFrom(valueBytes));
-            }
+            String column = innerMap.get(i);
+            byte[] valueBytes =
+                    convertFieldToBytes(record, i, columnTypeMap.get(column).getLogicalType());
+            entry.setCell(
+                    columnFamily,
+                    ByteString.copyFromUtf8(column),
+                    BigtableUtils.getTimestamp(context),
+                    ByteString.copyFrom(valueBytes));
         }
         return entry;
     }
@@ -263,6 +273,7 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
                 }
                 this.rowKeyIndex = index;
                 this.rowKeyTypeRoot = typeRoot;
+                this.rowKeyLogicalType = field.getDataType().getLogicalType();
             }
 
             // Populate maps for ROWs
@@ -329,6 +340,7 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
                         .put(row.getBoolean(index) ? (byte) 1 : (byte) 0)
                         .array();
             case TINYINT:
+                return ByteBuffer.allocate(Byte.BYTES).put(row.getByte(index)).array();
             case SMALLINT:
                 return ByteBuffer.allocate(Short.BYTES).putShort(row.getShort(index)).array();
             case INTERVAL_YEAR_MONTH:
@@ -389,6 +401,7 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
             case BOOLEAN:
                 return buffer.get() != 0;
             case TINYINT:
+                return buffer.get();
             case SMALLINT:
                 return buffer.getShort();
             case INTERVAL_YEAR_MONTH:
@@ -459,6 +472,7 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
         private String columnFamily;
         private Boolean useNestedRowsMode = false;
         private boolean upsertMode = false;
+        private BigtableRowKeyFormat rowKeyFormat;
 
         public Builder withSchema(DataType schema) {
             this.schema = schema;
@@ -485,6 +499,11 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
             return this;
         }
 
+        public Builder withRowKeyFormat(BigtableRowKeyFormat rowKeyFormat) {
+            this.rowKeyFormat = rowKeyFormat;
+            return this;
+        }
+
         public RowDataToRowMutationSerializer build() {
             checkNotNull(this.rowKeyField, ErrorMessages.ROW_KEY_FIELD_NULL);
             checkNotNull(this.schema, ErrorMessages.SCHEMA_NULL);
@@ -496,7 +515,8 @@ public class RowDataToRowMutationSerializer implements BaseRowMutationSerializer
                         ErrorMessages.COLUMN_FAMILY_OR_NESTED_ROWS_REQUIRED);
             }
             return new RowDataToRowMutationSerializer(
-                    schema, rowKeyField, useNestedRowsMode, columnFamily, upsertMode);
+                    schema, rowKeyField, useNestedRowsMode, columnFamily, upsertMode,
+                    rowKeyFormat);
         }
     }
 }

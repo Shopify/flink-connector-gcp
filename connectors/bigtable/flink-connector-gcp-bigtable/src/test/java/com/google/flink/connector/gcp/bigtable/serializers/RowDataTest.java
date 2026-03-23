@@ -281,7 +281,11 @@ public class RowDataTest {
     @ValueSource(booleans = {true, false})
     public void testRowMutationSerialization(Boolean useNestedRowsMode) {
         RowDataToRowMutationSerializer serializer = createTestSerializer(useNestedRowsMode);
-        RowMutationEntry wantedEntry = TestingUtils.getTestRowMutationEntry(useNestedRowsMode);
+        // In flat mode, the row key is now included in serialized output
+        RowMutationEntry wantedEntry =
+                useNestedRowsMode
+                        ? TestingUtils.getTestRowMutationEntry(true)
+                        : TestingUtils.getTestRowMutationEntryWithRowKey();
 
         RowData row = getRowData(useNestedRowsMode);
         RowMutationEntry serializedEntry = serializer.serialize(row, null);
@@ -331,7 +335,7 @@ public class RowDataTest {
         row.setField(1, StringData.fromString("char-value")); // charField
         row.setField(2, StringData.fromString("varchar-value")); // varcharField
         row.setField(3, true); // booleanField
-        row.setField(4, (short) 1); // tinyintField
+        row.setField(4, (byte) 1); // tinyintField
         row.setField(5, (short) 32767); // smallintField
         row.setField(6, 123456789); // integerField
         row.setField(7, 12345678987654321L); // longField
@@ -383,7 +387,7 @@ public class RowDataTest {
         row.setRowKind(RowKind.INSERT);
 
         RowMutationEntry entry = serializer.serialize(row, null);
-        RowMutationEntry wantedEntry = TestingUtils.getTestRowMutationEntry(false);
+        RowMutationEntry wantedEntry = TestingUtils.getTestRowMutationEntryWithRowKey();
         TestingUtils.assertRowMutationEntryEquality(entry, wantedEntry);
     }
 
@@ -395,7 +399,7 @@ public class RowDataTest {
         row.setRowKind(RowKind.UPDATE_AFTER);
 
         RowMutationEntry entry = serializer.serialize(row, null);
-        RowMutationEntry wantedEntry = TestingUtils.getTestRowMutationEntry(false);
+        RowMutationEntry wantedEntry = TestingUtils.getTestRowMutationEntryWithRowKey();
         TestingUtils.assertRowMutationEntryEquality(entry, wantedEntry);
     }
 
@@ -440,7 +444,7 @@ public class RowDataTest {
 
         RowMutationEntry entry = serializer.serialize(row, null);
         // Should have normal setCell mutations, not deleteRow
-        RowMutationEntry wantedEntry = TestingUtils.getTestRowMutationEntry(false);
+        RowMutationEntry wantedEntry = TestingUtils.getTestRowMutationEntryWithRowKey();
         TestingUtils.assertRowMutationEntryEquality(entry, wantedEntry);
     }
 
@@ -755,6 +759,7 @@ public class RowDataTest {
             case BOOLEAN:
                 return row.getBoolean(index);
             case TINYINT:
+                return row.getByte(index);
             case SMALLINT:
                 return row.getShort(index);
             case INTERVAL_YEAR_MONTH:

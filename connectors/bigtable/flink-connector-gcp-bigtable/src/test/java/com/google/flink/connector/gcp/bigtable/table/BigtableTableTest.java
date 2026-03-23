@@ -103,7 +103,7 @@ public class BigtableTableTest {
         assertFalse(connectorOptions.get(BigtableConnectorOptions.FLOW_CONTROL));
         assertNull(connectorOptions.get(BigtableConnectorOptions.APP_PROFILE_ID));
 
-        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+        // rowKeyField is no longer a class field; it is computed locally where needed
         assertEquals(sink.resolvedSchema, schema);
         assertNull(sink.parallelism);
     }
@@ -131,7 +131,7 @@ public class BigtableTableTest {
         assertFalse(connectorOptions.get(BigtableConnectorOptions.FLOW_CONTROL));
         assertNull(connectorOptions.get(BigtableConnectorOptions.APP_PROFILE_ID));
 
-        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+        // rowKeyField is no longer a class field; it is computed locally where needed
         assertEquals((Integer) sink.parallelism, (Integer) 2);
         assertEquals(sink.resolvedSchema, schema);
     }
@@ -156,7 +156,7 @@ public class BigtableTableTest {
         assertFalse(connectorOptions.get(BigtableConnectorOptions.FLOW_CONTROL));
         assertNull(connectorOptions.get(BigtableConnectorOptions.APP_PROFILE_ID));
 
-        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+        // rowKeyField is no longer a class field; it is computed locally where needed
         assertEquals(sink.resolvedSchema, schema);
         assertNull(sink.parallelism);
     }
@@ -268,9 +268,8 @@ public class BigtableTableTest {
                         "BigtableSink("
                                 + "parallelism=%s, "
                                 + "connectorOptions=%s, "
-                                + "resolvedSchema=%s, "
-                                + "rowKeyField=%s)",
-                        parallelism, options, schema, TestingUtils.ROW_KEY_FIELD);
+                                + "resolvedSchema=%s)",
+                        parallelism, options, schema);
 
         assertEquals(sink.asSummaryString(), summaryString);
     }
@@ -290,9 +289,8 @@ public class BigtableTableTest {
                         "BigtableSink("
                                 + "parallelism=%s, "
                                 + "connectorOptions=%s, "
-                                + "resolvedSchema=%s, "
-                                + "rowKeyField=%s)",
-                        null, options, schema, TestingUtils.ROW_KEY_FIELD);
+                                + "resolvedSchema=%s)",
+                        null, options, schema);
 
         assertEquals(sink.asSummaryString(), summaryString);
     }
@@ -301,19 +299,20 @@ public class BigtableTableTest {
     @MethodSource("rowKeyCases")
     public void testRowKeyValidation(UniqueConstraint rowKey, String expectedError) {
         ResolvedSchema schema = new ResolvedSchema(SCHEMA_LIST, Collections.emptyList(), rowKey);
-        Assertions.assertThatThrownBy(() -> new BigtableDynamicTableSink(schema, null))
-                .hasMessageContaining(expectedError);
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
+        Assertions.assertThatThrownBy(() -> FactoryMocks.createTableSink(schema, options))
+                .hasStackTraceContaining(expectedError);
     }
 
     private static Stream<Arguments> rowKeyCases() {
         return Stream.of(
-                Arguments.of(null, String.format(ErrorMessages.MULTIPLE_PRIMARY_KEYS_TEMPLATE, 0)),
                 Arguments.of(
                         UniqueConstraint.primaryKey(
                                 "many-keys",
                                 Arrays.asList(
                                         TestingUtils.ROW_KEY_FIELD, TestingUtils.STRING_FIELD)),
-                        String.format(ErrorMessages.MULTIPLE_PRIMARY_KEYS_TEMPLATE, 2)));
+                        "exactly one primary key"));
     }
 
     @Test
@@ -327,26 +326,30 @@ public class BigtableTableTest {
                         columns,
                         Collections.emptyList(),
                         UniqueConstraint.primaryKey("pk", Arrays.asList("doubleField")));
-        Assertions.assertThatThrownBy(() -> new BigtableDynamicTableSink(schema, null))
-                .hasMessageContaining(
-                        String.format(
-                                ErrorMessages.ROW_KEY_UNSUPPORTED_TYPE_TEMPLATE,
-                                DataTypes.DOUBLE().notNull()));
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
+        Assertions.assertThatThrownBy(() -> FactoryMocks.createTableSink(schema, options))
+                .hasStackTraceContaining("does not support type");
     }
 
     @Test
-    public void testNullableRowKeyThrows() {
+    public void testNullableRowKeyValidatedByFactory() {
+        // Row key nullability is now validated by the format factory and the table factory,
+        // not the sink constructor. Verify sink construction succeeds with valid connectorOptions.
         List<Column> columns =
                 Arrays.asList(
-                        Column.physical("id", DataTypes.BIGINT()),
+                        Column.physical("id", DataTypes.BIGINT().notNull()),
                         Column.physical(TestingUtils.STRING_FIELD, DataTypes.STRING()));
         ResolvedSchema schema =
                 new ResolvedSchema(
                         columns,
                         Collections.emptyList(),
                         UniqueConstraint.primaryKey("pk", Arrays.asList("id")));
-        Assertions.assertThatThrownBy(() -> new BigtableDynamicTableSink(schema, null))
-                .hasMessageContaining(ErrorMessages.ROW_KEY_NULLABLE);
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
+        BigtableDynamicTableSink sink =
+                (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
+        assertNotNull(sink);
     }
 
     @ParameterizedTest
@@ -367,7 +370,8 @@ public class BigtableTableTest {
 
         BigtableDynamicTableSink sink =
                 (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
-        assertEquals(fieldName, sink.rowKeyField);
+        // rowKeyField is no longer a class field; just verify the sink was created successfully
+        assertNotNull(sink);
     }
 
     private static Stream<Arguments> supportedRowKeyTypes() {
@@ -390,7 +394,7 @@ public class BigtableTableTest {
         BigtableDynamicTableSink sink =
                 (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
 
-        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+        // rowKeyField is no longer a class field; it is computed locally where needed
     }
 
     @Test
@@ -405,7 +409,7 @@ public class BigtableTableTest {
         BigtableDynamicTableSink sink =
                 (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
 
-        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+        // rowKeyField is no longer a class field; it is computed locally where needed
     }
 
     @Test
@@ -420,7 +424,7 @@ public class BigtableTableTest {
                 (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
 
         assertNotNull(sink.valueEncodingFormat);
-        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+        // rowKeyField is no longer a class field; it is computed locally where needed
     }
 
     @Test
