@@ -46,7 +46,7 @@ public class ErrorMessages {
             "There must be exactly one primary key, found %d.";
     public static final String ROW_KEY_NULLABLE = "Row key column must not be nullable";
     public static final String QUALIFIER_FIELD_REQUIRES_FORMAT =
-            "qualifier-field options require value.format to be set";
+            "The 'qualifier-field' options require 'value.format' to be set";
     public static final String QUALIFIER_FIELD_REQUIRES_NESTED_ROWS =
-            "qualifier-field options require use-nested-rows-mode=true";
+            "The 'qualifier-field' options require 'use-nested-rows-mode' to be true";
 }
