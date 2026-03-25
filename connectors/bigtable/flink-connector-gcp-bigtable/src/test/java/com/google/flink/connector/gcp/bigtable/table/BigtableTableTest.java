@@ -49,6 +49,7 @@ import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -379,6 +380,119 @@ public class BigtableTableTest {
     }
 
     @Test
+    public void testDynamicTableBigtableSinkWithValueFormat() throws IOException {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.USE_NESTED_ROWS_MODE.key(), "true");
+        options.put("value.format", "json");
+
+        ResolvedSchema schema = getResolvedSchema(true);
+
+        BigtableDynamicTableSink sink =
+                (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
+
+        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+    }
+
+    @Test
+    public void testDynamicTableBigtableSinkWithQualifierField() throws IOException {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.USE_NESTED_ROWS_MODE.key(), "true");
+        options.put("value.format", "json");
+        options.put("nested2.qualifier-field", "stringField2");
+
+        ResolvedSchema schema = getResolvedSchema(true);
+
+        BigtableDynamicTableSink sink =
+                (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
+
+        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+    }
+
+    @Test
+    public void testDynamicTableBigtableSinkFlatModeWithFormat() throws IOException {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
+        options.put("value.format", "json");
+
+        ResolvedSchema schema = getResolvedSchema(false);
+
+        BigtableDynamicTableSink sink =
+                (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
+
+        assertNotNull(sink.valueEncodingFormat);
+        assertEquals(sink.rowKeyField, TestingUtils.ROW_KEY_FIELD);
+    }
+
+    @Test
+    public void testPrefixedQualifierFieldWithUnknownFamilyThrows() {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.USE_NESTED_ROWS_MODE.key(), "true");
+        options.put("value.format", "json");
+        options.put("nonExistentFamily.qualifier-field", "someField");
+
+        ResolvedSchema schema = getResolvedSchema(true);
+
+        Assertions.assertThatThrownBy(() -> FactoryMocks.createTableSink(schema, options))
+                .hasStackTraceContaining(
+                        "Qualifier-field family 'nonExistentFamily' not found in schema");
+    }
+
+    @Test
+    public void testQualifierFieldRequiresFormat() {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.USE_NESTED_ROWS_MODE.key(), "true");
+        options.put("nested1.qualifier-field", "stringField");
+        // No value.format set
+
+        ResolvedSchema schema = getResolvedSchema(true);
+
+        Assertions.assertThatThrownBy(() -> FactoryMocks.createTableSink(schema, options))
+                .hasRootCauseMessage(ErrorMessages.QUALIFIER_FIELD_REQUIRES_FORMAT);
+    }
+
+    @Test
+    public void testQualifierFieldRequiresNestedRowsMode() {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.USE_NESTED_ROWS_MODE.key(), "false");
+        options.put("value.format", "json");
+        options.put("nested1.qualifier-field", "stringField");
+
+        ResolvedSchema schema = getResolvedSchema(true);
+
+        Assertions.assertThatThrownBy(() -> FactoryMocks.createTableSink(schema, options))
+                .hasRootCauseMessage(ErrorMessages.QUALIFIER_FIELD_REQUIRES_NESTED_ROWS);
+    }
+
+    @Test
+    public void testLegacyFlatModeStillWorks() {
+        // Exact same setup as testDynamicTableBigtableSink — verify nothing changed
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
+
+        ResolvedSchema schema = getResolvedSchema(false);
+
+        BigtableDynamicTableSink sink =
+                (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
+
+        assertNull(sink.valueEncodingFormat);
+        assertFalse(sink.connectorOptions.get(BigtableConnectorOptions.USE_NESTED_ROWS_MODE));
+    }
+
+    @Test
+    public void testLegacyNestedModeStillWorks() {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.USE_NESTED_ROWS_MODE.key(), "true");
+
+        ResolvedSchema schema = getResolvedSchema(true);
+
+        BigtableDynamicTableSink sink =
+                (BigtableDynamicTableSink) FactoryMocks.createTableSink(schema, options);
+
+        assertNull(sink.valueEncodingFormat);
+        assertTrue(sink.connectorOptions.get(BigtableConnectorOptions.USE_NESTED_ROWS_MODE));
+    }
+
+    @Test
     public void testUpsertModeChangelogMode() throws IOException {
         Map<String, String> options = getRequiredOptions();
         options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
@@ -470,6 +584,19 @@ public class BigtableTableTest {
 
         assertEquals(sink2, sink.copy());
         assertTrue(sink2.equals(sink.copy()));
+    }
+
+    @Test
+    public void testQualifierFieldNotInSchemaThrows() {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
+        options.put("value.format", "json");
+        options.put(BigtableConnectorOptions.QUALIFIER_FIELD.key(), "nonExistentField");
+
+        ResolvedSchema schema = getResolvedSchema(false);
+
+        Assertions.assertThatThrownBy(() -> FactoryMocks.createTableSink(schema, options))
+                .hasStackTraceContaining("Qualifier field 'nonExistentField' not found in schema");
     }
 
     private static ResolvedSchema getResolvedSchema(Boolean useNestedRowsMode) {

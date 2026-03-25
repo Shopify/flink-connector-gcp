@@ -19,18 +19,24 @@
 package com.google.flink.connector.gcp.bigtable.table;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.connector.format.EncodingFormat;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.factories.DynamicTableSinkFactory;
 import org.apache.flink.table.factories.FactoryUtil;
+import org.apache.flink.table.factories.SerializationFormatFactory;
 
 import com.google.flink.connector.gcp.bigtable.table.config.BigtableChangelogMode;
 import com.google.flink.connector.gcp.bigtable.table.config.BigtableConnectorOptions;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /** Factory class to create configured instances of {@link BigtableDynamicTableSink}. */
 @Internal
@@ -66,6 +72,8 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         additionalOptions.add(BigtableConnectorOptions.CREDENTIALS_KEY);
         additionalOptions.add(BigtableConnectorOptions.CREDENTIALS_ACCESS_TOKEN);
         additionalOptions.add(BigtableConnectorOptions.CHANGELOG_MODE);
+        additionalOptions.add(BigtableConnectorOptions.VALUE_FORMAT);
+        additionalOptions.add(BigtableConnectorOptions.QUALIFIER_FIELD);
 
         return additionalOptions;
     }
@@ -75,7 +83,32 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         final FactoryUtil.TableFactoryHelper helper =
                 FactoryUtil.createTableFactoryHelper(this, context);
 
-        helper.validate();
+        final Optional<EncodingFormat<SerializationSchema<RowData>>> valueEncodingFormat =
+                helper.discoverOptionalEncodingFormat(
+                        SerializationFormatFactory.class, BigtableConnectorOptions.VALUE_FORMAT);
+
+        // Collect prefixes for dynamic qualifier-field options (e.g. "nested2.qualifier-field"
+        // has prefix "nested2."). validateExcept uses startsWith matching, so we extract the
+        // prefix portion of each qualifier-field key.
+        Set<String> qualifierFieldPrefixes =
+                context.getCatalogTable().getOptions().keySet().stream()
+                        .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX))
+                        .map(
+                                k ->
+                                        k.substring(
+                                                        0,
+                                                        k.length()
+                                                                - BigtableConnectorOptions
+                                                                        .QUALIFIER_FIELD_SUFFIX
+                                                                        .length())
+                                                + ".")
+                        .collect(Collectors.toSet());
+
+        if (qualifierFieldPrefixes.isEmpty()) {
+            helper.validate();
+        } else {
+            helper.validateExcept(qualifierFieldPrefixes.toArray(new String[0]));
+        }
 
         final ReadableConfig tableOptions = helper.getOptions();
         final String changelogMode = tableOptions.get(BigtableConnectorOptions.CHANGELOG_MODE);
@@ -83,7 +116,10 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         validateChangelogMode(changelogMode, context);
 
         return new BigtableDynamicTableSink(
-                context.getCatalogTable().getResolvedSchema(), tableOptions);
+                context.getCatalogTable().getResolvedSchema(),
+                tableOptions,
+                valueEncodingFormat.orElse(null),
+                context.getCatalogTable().getOptions());
     }
 
     private static void validateChangelogMode(String changelogMode, Context context) {

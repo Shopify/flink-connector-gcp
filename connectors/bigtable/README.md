@@ -40,11 +40,12 @@ mvn clean install -DskipTest
 
 ## Serializers
 
-This connector comes with three built-in serializers to convert data types into Bigtable `RowMutationEntry` objects:
+This connector comes with four built-in serializers to convert data types into Bigtable `RowMutationEntry` objects:
 
 *   **`GenericRecordToRowMutationSerializer`**: For AVRO `GenericRecord` objects.
 *   **`RowDataToRowMutationSerializer`**: For Flink `RowData` objects.
 *   **`FunctionRowMutationSerializer`**: For custom serialization logic using a provided function.
+*   **`FormatAwareRowMutationSerializer`**: For format-agnostic serialization using Flink's format SPI. Used automatically when `value.format` is set in the Table API.
 
 You can create your own custom serializer inheriting from `BaseRowMutationSerializer`.
 
@@ -134,6 +135,50 @@ The [DataTypes](https://nightlies.apache.org/flink/flink-docs-release-1.19/api/j
 
 The maximum precision for time-based types is 6.
 
+### Format-Agnostic Mode (Table API)
+
+When using the Table API, you can use any Flink-compatible format (JSON, Protobuf, Avro, etc.) for encoding cell values by setting the `value.format` option. This delegates serialization to Flink's `SerializationFormatFactory` SPI, so any format on the classpath works automatically.
+
+**Flat Mode** (single column family):
+
+```
+CREATE TABLE bigtable_sink (
+  row_key STRING NOT NULL,
+  name STRING,
+  age INT,
+  PRIMARY KEY (row_key) NOT ENFORCED
+) WITH (
+  'connector' = 'bigtable',
+  'project' = 'my-project',
+  'instance' = 'my-instance',
+  'table' = 'my-table',
+  'column-family' = 'cf1',
+  'value.format' = 'protobuf'
+);
+```
+
+**Nested Rows Mode** (multiple column families):
+
+```
+CREATE TABLE bigtable_sink (
+  row_key STRING NOT NULL,
+  product ROW<shop_id BIGINT, title STRING>,
+  PRIMARY KEY (row_key) NOT ENFORCED
+) WITH (
+  'connector' = 'bigtable',
+  'project' = 'my-project',
+  'instance' = 'my-instance',
+  'table' = 'my-table',
+  'use-nested-rows-mode' = 'true',
+  'value.format' = 'protobuf',
+  'product.qualifier-field' = 'shop_id'
+);
+```
+
+When `qualifier-field` is set, the specified field's value becomes the column qualifier and the full sub-row (including the qualifier field) is serialized as the cell value. When `qualifier-field` is not set, cells are stored under a default `payload` qualifier.
+
+Without `value.format`, the connector uses its built-in byte serialization (see [Serializers](#serializers)).
+
 ## Table API
 
 This connector provides support for Flink's Table API, enabling easy and efficient data writing to Bigtable tables within your Flink Table API pipelines. 
@@ -185,8 +230,11 @@ The following connector options are available:
 | `credentials-key` | Specifies the Google Cloud credentials key to use. |
 | `credentials-access-token` | Specifies the Google Cloud access token to use as credentials. |
 | `batchSize` | The number of elements to group in a batch. |
+| `value.format` | The format for encoding cell values (e.g., `json`, `protobuf`). When set, uses Flink's format SPI instead of built-in byte serialization. |
+| `qualifier-field` | Field name to use as the Bigtable column qualifier. Requires `value.format` and `column-family`. When not set, cells are stored under a default `payload` qualifier. |
+| `<family>.qualifier-field` | Per-family qualifier field for nested-rows mode. Requires `value.format` and `use-nested-rows-mode`. When not set, cells are stored under a default `payload` qualifier. |
 
-Either `column-family` or `use-nested-rows-mode` is required.
+Either `column-family` or `use-nested-rows-mode` is required. The `value.format` option is optional — when omitted, the connector uses its built-in byte serialization.
 
 ## Exactly Once
 
