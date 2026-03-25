@@ -151,6 +151,9 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                     fieldExists,
                     String.format(
                             "Qualifier field '%s' not found in schema", qualifierFieldName));
+            checkArgument(
+                    !qualifierFieldName.equals(rowKeyField),
+                    "qualifier-field cannot be the same as the primary key field");
         }
     }
 

@@ -587,6 +587,20 @@ public class BigtableTableTest {
     }
 
     @Test
+    public void testQualifierFieldCannotBeRowKeyField() {
+        Map<String, String> options = getRequiredOptions();
+        options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
+        options.put("value.format", "json");
+        options.put(BigtableConnectorOptions.QUALIFIER_FIELD.key(), TestingUtils.ROW_KEY_FIELD);
+
+        ResolvedSchema schema = getResolvedSchema(false);
+
+        Assertions.assertThatThrownBy(() -> FactoryMocks.createTableSink(schema, options))
+                .hasStackTraceContaining(
+                        "qualifier-field cannot be the same as the primary key field");
+    }
+
+    @Test
     public void testQualifierFieldNotInSchemaThrows() {
         Map<String, String> options = getRequiredOptions();
         options.put(BigtableConnectorOptions.COLUMN_FAMILY.key(), TestingUtils.COLUMN_FAMILY);
