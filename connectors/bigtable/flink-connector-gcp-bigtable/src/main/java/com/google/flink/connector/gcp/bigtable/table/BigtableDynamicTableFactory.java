@@ -95,12 +95,8 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
                         .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX))
                         .map(
                                 k ->
-                                        k.substring(
-                                                        0,
-                                                        k.length()
-                                                                - BigtableConnectorOptions
-                                                                        .QUALIFIER_FIELD_SUFFIX
-                                                                        .length())
+                                        BigtableConnectorOptions
+                                                        .getFamilyFromQualifierOptionKey(k)
                                                 + ".")
                         .collect(Collectors.toSet());
 

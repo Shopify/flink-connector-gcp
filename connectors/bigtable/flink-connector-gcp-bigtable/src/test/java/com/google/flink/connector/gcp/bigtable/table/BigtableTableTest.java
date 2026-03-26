@@ -613,6 +613,17 @@ public class BigtableTableTest {
                 .hasStackTraceContaining("Qualifier field 'nonExistentField' not found in schema");
     }
 
+    @Test
+    public void testGetFamilyFromQualifierOptionKey() {
+        assertEquals(
+                "product",
+                BigtableConnectorOptions.getFamilyFromQualifierOptionKey(
+                        "product.qualifier-field"));
+        assertEquals(
+                "cf1",
+                BigtableConnectorOptions.getFamilyFromQualifierOptionKey("cf1.qualifier-field"));
+    }
+
     private static ResolvedSchema getResolvedSchema(Boolean useNestedRowsMode) {
         List<Column> schemaList = useNestedRowsMode ? NESTED_SCHEMA_LIST : SCHEMA_LIST;
 

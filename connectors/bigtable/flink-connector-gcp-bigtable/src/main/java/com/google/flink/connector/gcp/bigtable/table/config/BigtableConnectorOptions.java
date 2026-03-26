@@ -127,4 +127,12 @@ public class BigtableConnectorOptions {
                                     + "Requires 'value.format' to be set.");
 
     public static final String QUALIFIER_FIELD_SUFFIX = ".qualifier-field";
+
+    /**
+     * Extracts the column family name from a dynamic qualifier-field option key. For example,
+     * {@code "product.qualifier-field"} returns {@code "product"}.
+     */
+    public static String getFamilyFromQualifierOptionKey(String key) {
+        return key.substring(0, key.length() - QUALIFIER_FIELD_SUFFIX.length());
+    }
 }

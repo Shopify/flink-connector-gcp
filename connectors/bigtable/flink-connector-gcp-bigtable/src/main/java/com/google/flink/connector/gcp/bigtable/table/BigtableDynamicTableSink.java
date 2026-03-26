@@ -119,8 +119,7 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                     .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX)
                             && !k.equals(BigtableConnectorOptions.QUALIFIER_FIELD.key()))
                     .forEach(k -> {
-                        String family = k.substring(
-                                0, k.length() - BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX.length());
+                        String family = BigtableConnectorOptions.getFamilyFromQualifierOptionKey(k);
                         checkArgument(
                                 schemaColumnNames.contains(family),
                                 String.format(
@@ -348,12 +347,8 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
         for (Map.Entry<String, String> entry : rawOptions.entrySet()) {
             if (entry.getKey().endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX)) {
                 String family =
-                        entry.getKey()
-                                .substring(
-                                        0,
-                                        entry.getKey().length()
-                                                - BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX
-                                                        .length());
+                        BigtableConnectorOptions.getFamilyFromQualifierOptionKey(
+                                entry.getKey());
                 String qualifierFieldName = entry.getValue();
                 configs.put(
                         family, resolveQualifierField(physicalSchema, family, qualifierFieldName));
