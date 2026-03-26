@@ -157,6 +157,18 @@ CREATE TABLE bigtable_sink (
 );
 ```
 
+> **Note:** In flat mode with `value.format`, the format serializer receives the full row including the row key field. Your format schema (Protobuf, Avro, JSON, etc.) must include the row key field. For example, a Protobuf schema for the table above would be:
+>
+> ```protobuf
+> message BigtableRow {
+>   string row_key = 1;
+>   string name = 2;
+>   int32 age = 3;
+> }
+> ```
+>
+> This enables use cases where the serialized payload needs to contain the row key (e.g., for downstream consumers that need the key for routing or deduplication).
+
 **Nested Rows Mode** (multiple column families):
 
 ```

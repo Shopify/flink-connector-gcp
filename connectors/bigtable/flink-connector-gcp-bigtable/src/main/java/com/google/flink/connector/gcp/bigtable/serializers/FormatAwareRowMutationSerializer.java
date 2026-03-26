@@ -22,7 +22,6 @@ import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.table.api.DataTypes.Field;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.utils.ProjectedRowData;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.LogicalTypeFamily;
@@ -35,10 +34,8 @@ import com.google.protobuf.ByteString;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
@@ -69,7 +66,6 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
     private final boolean flatMode;
     private final @Nullable String flatColumnFamily;
     private final @Nullable SerializationSchema<RowData> flatSerializer;
-    private final @Nullable int[] flatProjection;
     private final @Nullable QualifierConfig flatQualifierConfig;
 
     /**
@@ -120,17 +116,14 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
         this.indexToFamily = Collections.emptyMap();
         this.indexToArity = Collections.emptyMap();
 
-        // Resolve row key index and build projection array
+        // Resolve row key index
         int resolvedRowKeyIndex = -1;
         LogicalTypeRoot resolvedRowKeyTypeRoot = null;
-        List<Integer> projection = new ArrayList<>();
         int index = 0;
         for (Field field : DataType.getFields(physicalDataType)) {
             if (field.getName().equals(rowKeyField)) {
                 resolvedRowKeyIndex = index;
                 resolvedRowKeyTypeRoot = field.getDataType().getLogicalType().getTypeRoot();
-            } else {
-                projection.add(index);
             }
             index++;
         }
@@ -139,7 +132,6 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
                 String.format("Row key field '%s' not found in schema", rowKeyField));
         this.rowKeyIndex = resolvedRowKeyIndex;
         this.rowKeyTypeRoot = resolvedRowKeyTypeRoot;
-        this.flatProjection = projection.stream().mapToInt(Integer::intValue).toArray();
         this.flatQualifierConfig = qualifierConfig;
     }
 
@@ -196,7 +188,6 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
         this.flatMode = false;
         this.flatColumnFamily = null;
         this.flatSerializer = null;
-        this.flatProjection = null;
         this.flatQualifierConfig = null;
     }
 
@@ -229,14 +220,12 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
         RowMutationEntry entry = RowMutationEntry.create(rowKey);
 
         if (flatMode) {
-            // Flat mode: project out row key, serialize entire projected row as one blob
-            ProjectedRowData projected = ProjectedRowData.from(flatProjection);
-            projected.replaceRow(record);
-            byte[] value = flatSerializer.serialize(projected);
+            // Flat mode: serialize entire row (including row key) as one blob
+            byte[] value = flatSerializer.serialize(record);
             String qualifier =
                     flatQualifierConfig != null
                             ? extractQualifier(
-                                    projected,
+                                    record,
                                     flatQualifierConfig.fieldIndex(),
                                     flatQualifierConfig.fieldType())
                             : DEFAULT_QUALIFIER;
@@ -291,11 +280,9 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
 
         if (flatMode) {
             if (flatQualifierConfig != null) {
-                ProjectedRowData projected = ProjectedRowData.from(flatProjection);
-                projected.replaceRow(record);
                 String qualifier =
                         extractQualifier(
-                                projected,
+                                record,
                                 flatQualifierConfig.fieldIndex(),
                                 flatQualifierConfig.fieldType());
                 entry.deleteCells(flatColumnFamily, ByteString.copyFromUtf8(qualifier));

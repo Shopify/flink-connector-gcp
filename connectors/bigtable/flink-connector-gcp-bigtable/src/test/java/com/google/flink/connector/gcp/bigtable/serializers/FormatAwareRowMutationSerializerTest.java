@@ -245,7 +245,6 @@ public class FormatAwareRowMutationSerializerTest {
                         DataTypes.FIELD("title", DataTypes.STRING()));
 
         byte[] expectedBytes = "flat-bytes".getBytes();
-        // This mock serializer receives a projected RowData (without rowKey)
         SerializationSchema<RowData> mockSerializer = rowData -> expectedBytes;
 
         FormatAwareRowMutationSerializer serializer =
@@ -275,7 +274,7 @@ public class FormatAwareRowMutationSerializerTest {
                         DataTypes.FIELD("title", DataTypes.STRING()),
                         DataTypes.FIELD("rowKey", DataTypes.STRING().notNull()));
 
-        byte[] expectedBytes = "projected-bytes".getBytes();
+        byte[] expectedBytes = "flat-bytes".getBytes();
         SerializationSchema<RowData> mockSerializer = rowData -> expectedBytes;
 
         FormatAwareRowMutationSerializer serializer =
@@ -655,9 +654,9 @@ public class FormatAwareRowMutationSerializerTest {
         byte[] expectedBytes = "flat-qualifier-bytes".getBytes();
         SerializationSchema<RowData> mockSerializer = rowData -> expectedBytes;
 
-        // product_id is at adjusted index 0 (after row key exclusion)
+        // product_id is at index 1 in the full schema (rowKey is at 0)
         QualifierConfig qualifierConfig =
-                new QualifierConfig(0, DataTypes.STRING().getLogicalType());
+                new QualifierConfig(1, DataTypes.STRING().getLogicalType());
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
@@ -688,8 +687,9 @@ public class FormatAwareRowMutationSerializerTest {
                         DataTypes.FIELD("name", DataTypes.STRING()),
                         DataTypes.FIELD("price", DataTypes.BIGINT()));
 
+        // product_id is at index 1 in the full schema (rowKey is at 0)
         QualifierConfig qualifierConfig =
-                new QualifierConfig(0, DataTypes.STRING().getLogicalType());
+                new QualifierConfig(1, DataTypes.STRING().getLogicalType());
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
@@ -726,8 +726,9 @@ public class FormatAwareRowMutationSerializerTest {
         byte[] expectedBytes = "int-qualifier-bytes".getBytes();
         SerializationSchema<RowData> mockSerializer = rowData -> expectedBytes;
 
+        // product_id is at index 1 in the full schema (rowKey is at 0)
         QualifierConfig qualifierConfig =
-                new QualifierConfig(0, new BigIntType());
+                new QualifierConfig(1, new BigIntType());
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
@@ -787,8 +788,9 @@ public class FormatAwareRowMutationSerializerTest {
                         DataTypes.FIELD("product_id", DataTypes.STRING()),
                         DataTypes.FIELD("name", DataTypes.STRING()));
 
+        // product_id is at index 1 in the full schema (rowKey is at 0)
         QualifierConfig qualifierConfig =
-                new QualifierConfig(0, DataTypes.STRING().getLogicalType());
+                new QualifierConfig(1, DataTypes.STRING().getLogicalType());
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(

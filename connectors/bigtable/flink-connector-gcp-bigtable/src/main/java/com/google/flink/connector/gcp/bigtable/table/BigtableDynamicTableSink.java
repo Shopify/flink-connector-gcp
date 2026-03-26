@@ -20,7 +20,6 @@ package com.google.flink.connector.gcp.bigtable.table;
 
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.configuration.ReadableConfig;
-import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.DataTypes.Field;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
@@ -44,7 +43,6 @@ import com.google.flink.connector.gcp.bigtable.utils.ErrorMessages;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -226,9 +224,8 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
             } else {
                 // Flat mode: single column family, entire row as one blob
                 String columnFamily = connectorOptions.get(BigtableConnectorOptions.COLUMN_FAMILY);
-                DataType projectedType = projectWithoutRowKey(physicalSchema, rowKeyField);
                 SerializationSchema<RowData> formatSerializer =
-                        valueEncodingFormat.createRuntimeEncoder(context, projectedType);
+                        valueEncodingFormat.createRuntimeEncoder(context, physicalSchema);
                 String qualifierFieldName =
                         connectorOptions
                                 .getOptional(BigtableConnectorOptions.QUALIFIER_FIELD)
@@ -236,7 +233,7 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                 QualifierConfig qualifierConfig =
                         qualifierFieldName != null
                                 ? resolveTopLevelQualifierField(
-                                        physicalSchema, rowKeyField, qualifierFieldName)
+                                        physicalSchema, qualifierFieldName)
                                 : null;
                 serializer =
                         FormatAwareRowMutationSerializer.forFlatMode(
@@ -358,34 +355,17 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
     }
 
     /**
-     * Creates a projected DataType that excludes the row key field. Used for flat-mode format
-     * serialization.
-     */
-    private static DataType projectWithoutRowKey(DataType physicalSchema, String rowKeyField) {
-        java.util.List<DataTypes.Field> fields = new ArrayList<>();
-        for (Field field : DataType.getFields(physicalSchema)) {
-            if (!field.getName().equals(rowKeyField)) {
-                fields.add(DataTypes.FIELD(field.getName(), field.getDataType()));
-            }
-        }
-        return DataTypes.ROW(fields.toArray(new DataTypes.Field[0]));
-    }
-
-    /**
      * Resolves the index and type of a qualifier field within a flat (non-nested) schema. The index
-     * is adjusted to account for the row key field being excluded from the projected row.
+     * matches the field's actual position in the full physical schema.
      */
     private static QualifierConfig resolveTopLevelQualifierField(
-            DataType physicalSchema, String rowKeyField, String qualifierFieldName) {
-        int adjustedIdx = 0;
+            DataType physicalSchema, String qualifierFieldName) {
+        int idx = 0;
         for (Field field : DataType.getFields(physicalSchema)) {
-            if (field.getName().equals(rowKeyField)) {
-                continue;
-            }
             if (field.getName().equals(qualifierFieldName)) {
-                return new QualifierConfig(adjustedIdx, field.getDataType().getLogicalType());
+                return new QualifierConfig(idx, field.getDataType().getLogicalType());
             }
-            adjustedIdx++;
+            idx++;
         }
         throw new IllegalArgumentException(
                 String.format("Qualifier field '%s' not found in schema", qualifierFieldName));
