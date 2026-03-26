@@ -179,7 +179,7 @@ When `qualifier-field` is set, the specified field's value becomes the column qu
 
 #### Delete Behavior (upsert/all changelog modes)
 
-When a `DELETE` event is received, the delete scope depends on whether a `qualifier-field` is configured. This applies to both `FormatAwareRowMutationSerializer` and the built-in `RowDataToRowMutationSerializer` — both use the same delete semantics.
+When a `DELETE` event is received, the delete scope depends on whether a `qualifier-field` is configured. This applies to `FormatAwareRowMutationSerializer` (used when `value.format` is set). The built-in `RowDataToRowMutationSerializer` does not support `qualifier-field` and always deletes the entire column family.
 
 **Without `qualifier-field`** — deletes the entire column family:
 
