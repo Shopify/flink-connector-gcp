@@ -312,13 +312,19 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
             if (qc != null) {
                 // Qualifier-keyed: delete only the specific cell identified by qualifier value
                 int fieldIndex = e.getKey();
-                if (!record.isNullAt(fieldIndex)) {
-                    int arity = indexToArity.get(fieldIndex);
-                    RowData subRow = record.getRow(fieldIndex, arity);
-                    String qualifier =
-                            extractQualifier(subRow, qc.fieldIndex(), qc.fieldType());
-                    entry.deleteCells(family, ByteString.copyFromUtf8(qualifier));
+                if (record.isNullAt(fieldIndex)) {
+                    throw new IllegalArgumentException(
+                            String.format(
+                                    "Cannot delete cell for family '%s': sub-row is null. "
+                                            + "When using a qualifier-field, DELETE events must "
+                                            + "contain the sub-row to identify which cell to delete.",
+                                    family));
                 }
+                int arity = indexToArity.get(fieldIndex);
+                RowData subRow = record.getRow(fieldIndex, arity);
+                String qualifier =
+                        extractQualifier(subRow, qc.fieldIndex(), qc.fieldType());
+                entry.deleteCells(family, ByteString.copyFromUtf8(qualifier));
             } else {
                 // No qualifier: delete entire column family
                 entry.deleteFamily(family);

@@ -554,6 +554,35 @@ public class FormatAwareRowMutationSerializerTest {
                 pubMutation.getDeleteFromColumn().getColumnQualifier());
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void testDeleteNestedModeNullSubRowWithQualifierFieldThrows() {
+        DataType schema =
+                DataTypes.ROW(
+                        DataTypes.FIELD("rowKey", DataTypes.STRING().notNull()),
+                        DataTypes.FIELD(
+                                "product",
+                                DataTypes.ROW(
+                                        DataTypes.FIELD("id", DataTypes.BIGINT()),
+                                        DataTypes.FIELD("title", DataTypes.STRING()))));
+
+        Map<String, SerializationSchema<RowData>> familySerializers = new HashMap<>();
+        familySerializers.put("product", rowData -> "bytes".getBytes());
+
+        Map<String, QualifierConfig> qualifierConfigs = new HashMap<>();
+        qualifierConfigs.put("product", new QualifierConfig(0, new BigIntType()));
+
+        FormatAwareRowMutationSerializer serializer =
+                new FormatAwareRowMutationSerializer(
+                        schema, "rowKey", familySerializers, qualifierConfigs, true);
+
+        GenericRowData record = new GenericRowData(2);
+        record.setField(0, StringData.fromString("row1"));
+        record.setField(1, null); // null sub-row with qualifier-field configured
+        record.setRowKind(RowKind.DELETE);
+
+        serializer.serialize(record, createContext());
+    }
+
     @Test
     public void testDeleteFlatMode() {
         DataType schema =
