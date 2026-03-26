@@ -195,7 +195,7 @@ When a `DELETE` event is received, the delete scope depends on whether a `qualif
 
 ```
 -- Given: row_key='user1' with cells cf1:42, cf1:99
--- DELETE event for row_key='user1', shop_id=42
+-- DELETE event for row_key='user1' with data {row_key: 'user1', id: 42, title: 'T-Shirt'}
 -- Result: only cell cf1:42 is deleted (deleteCells), cf1:99 is untouched
 ```
 
