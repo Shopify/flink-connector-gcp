@@ -99,10 +99,7 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
 
         boolean hasPrefixedQualifierFields =
                 this.rawTableOptions.keySet().stream()
-                        .anyMatch(
-                                k ->
-                                        k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX)
-                                                && !k.equals(BigtableConnectorOptions.QUALIFIER_FIELD.key()));
+                        .anyMatch(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX));
         if (hasPrefixedQualifierFields) {
             checkArgument(
                     valueEncodingFormat != null, ErrorMessages.QUALIFIER_FIELD_REQUIRES_FORMAT);
@@ -114,8 +111,7 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                             .map(c -> c.getName())
                             .collect(Collectors.toSet());
             this.rawTableOptions.keySet().stream()
-                    .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX)
-                            && !k.equals(BigtableConnectorOptions.QUALIFIER_FIELD.key()))
+                    .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX))
                     .forEach(k -> {
                         String family = BigtableConnectorOptions.getFamilyFromQualifierOptionKey(k);
                         checkArgument(
