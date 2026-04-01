@@ -79,6 +79,12 @@ public abstract class BigtableSink<T> implements Sink<T> {
                         credentials(),
                         batchSize());
 
+        try {
+            serializer().open(sinkInitContext.asSerializationSchemaInitializationContext());
+        } catch (Exception e) {
+            throw new IOException("Failed to initialize serializer", e);
+        }
+
         return new BigtableSinkWriter<T>(
                 new BigtableFlushableWriter(client, sinkInitContext, table()),
                 serializer(),

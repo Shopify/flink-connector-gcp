@@ -18,28 +18,32 @@
 
 package com.google.flink.connector.gcp.bigtable.serializers;
 
-import org.apache.flink.api.common.serialization.SerializationSchema;
-import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.table.types.logical.BigIntType;
+import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.VarCharType;
 
-import com.google.cloud.bigtable.data.v2.models.RowMutationEntry;
+import org.junit.Test;
 
-import javax.annotation.Nullable;
+import static org.junit.Assert.assertEquals;
 
-import java.io.Serializable;
+/** Tests for {@link QualifierConfig}. */
+public class QualifierConfigTest {
 
-/**
- * Base serializer class.
- *
- * <p>This class implements the interface to serialize to {@link RowMutationEntry}.
- */
-public interface BaseRowMutationSerializer<T> extends Serializable {
+    @Test
+    public void testQualifierConfigCreation() {
+        LogicalType type = new BigIntType();
+        QualifierConfig config = new QualifierConfig(2, type);
 
-    /**
-     * Initializes the serializer. Called once before the first call to {@link #serialize}. Default
-     * implementation is a no-op for backward compatibility.
-     */
-    default void open(SerializationSchema.InitializationContext context) throws Exception {}
+        assertEquals(2, config.fieldIndex());
+        assertEquals(type, config.fieldType());
+    }
 
-    @Nullable
-    RowMutationEntry serialize(T element, SinkWriter.Context context);
+    @Test
+    public void testQualifierConfigWithStringType() {
+        LogicalType type = new VarCharType();
+        QualifierConfig config = new QualifierConfig(0, type);
+
+        assertEquals(0, config.fieldIndex());
+        assertEquals(type, config.fieldType());
+    }
 }

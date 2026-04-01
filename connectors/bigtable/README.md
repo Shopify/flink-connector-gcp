@@ -40,11 +40,12 @@ mvn clean install -DskipTest
 
 ## Serializers
 
-This connector comes with three built-in serializers to convert data types into Bigtable `RowMutationEntry` objects:
+This connector comes with four built-in serializers to convert data types into Bigtable `RowMutationEntry` objects:
 
 *   **`GenericRecordToRowMutationSerializer`**: For AVRO `GenericRecord` objects.
 *   **`RowDataToRowMutationSerializer`**: For Flink `RowData` objects.
 *   **`FunctionRowMutationSerializer`**: For custom serialization logic using a provided function.
+*   **`FormatAwareRowMutationSerializer`**: For format-agnostic serialization using Flink's format SPI. Used automatically when `value.format` is set in the Table API.
 
 You can create your own custom serializer inheriting from `BaseRowMutationSerializer`.
 
@@ -134,6 +135,86 @@ The [DataTypes](https://nightlies.apache.org/flink/flink-docs-release-1.19/api/j
 
 The maximum precision for time-based types is 6.
 
+### Format-Agnostic Mode (Table API)
+
+When using the Table API, you can use any Flink-compatible format (JSON, Protobuf, Avro, etc.) for encoding cell values by setting the `value.format` option. This delegates serialization to Flink's `SerializationFormatFactory` SPI, so any format on the classpath works automatically.
+
+**Flat Mode** (single column family):
+
+```
+CREATE TABLE bigtable_sink (
+  row_key STRING NOT NULL,
+  name STRING,
+  age INT,
+  PRIMARY KEY (row_key) NOT ENFORCED
+) WITH (
+  'connector' = 'bigtable',
+  'project' = 'my-project',
+  'instance' = 'my-instance',
+  'table' = 'my-table',
+  'column-family' = 'cf1',
+  'value.format' = 'protobuf'
+);
+```
+
+> **Note:** In flat mode with `value.format`, the format serializer receives the full row including the row key field. Your format schema (Protobuf, Avro, JSON, etc.) must include the row key field. For example, a Protobuf schema for the table above would be:
+>
+> ```protobuf
+> message BigtableRow {
+>   string row_key = 1;
+>   string name = 2;
+>   int32 age = 3;
+> }
+> ```
+>
+> This enables use cases where the serialized payload needs to contain the row key (e.g., for downstream consumers that need the key for routing or deduplication).
+
+**Nested Rows Mode** (multiple column families):
+
+```
+CREATE TABLE bigtable_sink (
+  row_key STRING NOT NULL,
+  product ROW<shop_id BIGINT, title STRING>,
+  PRIMARY KEY (row_key) NOT ENFORCED
+) WITH (
+  'connector' = 'bigtable',
+  'project' = 'my-project',
+  'instance' = 'my-instance',
+  'table' = 'my-table',
+  'use-nested-rows-mode' = 'true',
+  'value.format' = 'protobuf',
+  'product.qualifier-field' = 'shop_id'
+);
+```
+
+When `qualifier-field` is set, the specified field's value becomes the column qualifier and the full sub-row (including the qualifier field) is serialized as the cell value. When `qualifier-field` is not set, cells are stored under a default `payload` qualifier.
+
+#### Delete Behavior (upsert/all changelog modes)
+
+When a `DELETE` event is received, the delete scope depends on whether a `qualifier-field` is configured. This applies to `FormatAwareRowMutationSerializer` (used when `value.format` is set). The built-in `RowDataToRowMutationSerializer` does not support `qualifier-field` and always deletes the entire column family.
+
+**Without `qualifier-field`** — deletes the entire column family:
+
+```
+-- Given: row_key='user1' with cells cf1:payload, cf1:other_col
+-- DELETE event for row_key='user1'
+-- Result: all cells in cf1 for row_key='user1' are deleted (deleteFamily)
+```
+
+> **Note:** Without a `qualifier-field`, the connector does not have enough information to target a specific qualifier, so it deletes the entire column family. This means the `payload` cell and any other cells in the same family (including those written by other systems) will be deleted.
+
+**With `qualifier-field`** — deletes only the specific cell identified by the qualifier value:
+
+```
+-- Given: row_key='user1' with cells cf1:42, cf1:99
+-- DELETE event for row_key='user1' with data {row_key: 'user1', id: 42, title: 'T-Shirt'}
+-- Result: only cell cf1:42 is deleted (deleteCells), cf1:99 is untouched
+```
+
+In nested-rows mode, the same logic applies per column family: families with a `<family>.qualifier-field` delete only the specific cell, while families without one delete the entire family.
+
+Without `value.format`, the connector uses its built-in byte serialization (see [Serializers](#serializers)).
+
 ## Table API
 
 This connector provides support for Flink's Table API, enabling easy and efficient data writing to Bigtable tables within your Flink Table API pipelines. 
@@ -184,9 +265,25 @@ The following connector options are available:
 | `credentials-file` | Specifies the Google Cloud credentials file to use. |
 | `credentials-key` | Specifies the Google Cloud credentials key to use. |
 | `credentials-access-token` | Specifies the Google Cloud access token to use as credentials. |
+| `changelog-mode` | Changelog mode for the sink: `insert-only` (default), `upsert`, or `all`. Modes other than `insert-only` require a PRIMARY KEY. |
 | `batchSize` | The number of elements to group in a batch. |
+| `value.format` | The format for encoding cell values (e.g., `json`, `protobuf`). When set, uses Flink's format SPI instead of built-in byte serialization. |
+| `qualifier-field` | Field name to use as the Bigtable column qualifier. Requires `value.format` and `column-family`. When not set, cells are stored under a default `payload` qualifier. |
+| `<family>.qualifier-field` | Per-family qualifier field for nested-rows mode. Requires `value.format` and `use-nested-rows-mode`. When not set, cells are stored under a default `payload` qualifier. |
 
-Either `column-family` or `use-nested-rows-mode` is required.
+Either `column-family` or `use-nested-rows-mode` is required. The `value.format` option is optional — when omitted, the connector uses its built-in byte serialization.
+
+#### Changelog Modes
+
+The `changelog-mode` option controls which types of change events the sink accepts:
+
+| Mode | Events | Description |
+|---|---|---|
+| `insert-only` | `INSERT` | Default. Only accepts inserts — suitable for append-only workloads. |
+| `upsert` | `INSERT`, `UPDATE_AFTER`, `DELETE` | Accepts inserts, updates, and deletes. `UPDATE_BEFORE` events are ignored. Requires a PRIMARY KEY. |
+| `all` | `INSERT`, `UPDATE_BEFORE`, `UPDATE_AFTER`, `DELETE` | Accepts all changelog events. Requires a PRIMARY KEY. |
+
+For `DELETE` events, see [Delete Behavior](#delete-behavior-upsertall-changelog-modes) for details on how deletes are applied to Bigtable.
 
 ## Exactly Once
 
