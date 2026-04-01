@@ -93,11 +93,7 @@ public class BigtableDynamicTableFactory implements DynamicTableSinkFactory {
         Set<String> qualifierFieldPrefixes =
                 context.getCatalogTable().getOptions().keySet().stream()
                         .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX))
-                        .map(
-                                k ->
-                                        BigtableConnectorOptions
-                                                        .getFamilyFromQualifierOptionKey(k)
-                                                + ".")
+                        .map(k -> BigtableConnectorOptions.getFamilyFromQualifierOptionKey(k) + ".")
                         .collect(Collectors.toSet());
 
         if (qualifierFieldPrefixes.isEmpty()) {

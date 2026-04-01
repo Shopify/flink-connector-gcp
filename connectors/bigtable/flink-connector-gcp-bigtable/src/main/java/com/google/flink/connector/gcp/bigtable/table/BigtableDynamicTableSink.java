@@ -21,6 +21,7 @@ package com.google.flink.connector.gcp.bigtable.table;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.DataTypes.Field;
+import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.format.EncodingFormat;
@@ -108,28 +109,31 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                     ErrorMessages.QUALIFIER_FIELD_REQUIRES_NESTED_ROWS);
             Set<String> schemaColumnNames =
                     resolvedSchema.getColumns().stream()
-                            .map(c -> c.getName())
+                            .map(Column::getName)
                             .collect(Collectors.toSet());
             this.rawTableOptions.keySet().stream()
                     .filter(k -> k.endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX))
-                    .forEach(k -> {
-                        String family = BigtableConnectorOptions.getFamilyFromQualifierOptionKey(k);
-                        checkArgument(
-                                schemaColumnNames.contains(family),
-                                String.format(
-                                        "Qualifier-field family '%s' not found in schema", family));
-                    });
+                    .forEach(
+                            k -> {
+                                String family =
+                                        BigtableConnectorOptions.getFamilyFromQualifierOptionKey(k);
+                                checkArgument(
+                                        schemaColumnNames.contains(family),
+                                        String.format(
+                                                "Qualifier-field family '%s' not found in schema",
+                                                family));
+                            });
         }
 
         boolean hasTopLevelQualifierField =
-                connectorOptions
-                        .getOptional(BigtableConnectorOptions.QUALIFIER_FIELD)
-                        .isPresent();
+                connectorOptions.getOptional(BigtableConnectorOptions.QUALIFIER_FIELD).isPresent();
         if (hasTopLevelQualifierField) {
             checkArgument(
                     valueEncodingFormat != null, ErrorMessages.QUALIFIER_FIELD_REQUIRES_FORMAT);
             checkArgument(
-                    connectorOptions.getOptional(BigtableConnectorOptions.COLUMN_FAMILY).isPresent(),
+                    connectorOptions
+                            .getOptional(BigtableConnectorOptions.COLUMN_FAMILY)
+                            .isPresent(),
                     "qualifier-field requires column-family to be set");
             checkArgument(
                     !connectorOptions.get(BigtableConnectorOptions.USE_NESTED_ROWS_MODE),
@@ -137,13 +141,14 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                             + "Use '<family>.qualifier-field' for nested-rows-mode instead.");
             String qualifierFieldName =
                     connectorOptions.get(BigtableConnectorOptions.QUALIFIER_FIELD);
-            boolean fieldExists =
+            Set<String> schemaColumnNames =
                     resolvedSchema.getColumns().stream()
-                            .anyMatch(col -> col.getName().equals(qualifierFieldName));
+                            .map(Column::getName)
+                            .collect(Collectors.toSet());
+            boolean fieldExists = schemaColumnNames.contains(qualifierFieldName);
             checkArgument(
                     fieldExists,
-                    String.format(
-                            "Qualifier field '%s' not found in schema", qualifierFieldName));
+                    String.format("Qualifier field '%s' not found in schema", qualifierFieldName));
             checkArgument(
                     !qualifierFieldName.equals(rowKeyField),
                     "qualifier-field cannot be the same as the primary key field");
@@ -228,8 +233,7 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
                                 .orElse(null);
                 QualifierConfig qualifierConfig =
                         qualifierFieldName != null
-                                ? resolveTopLevelQualifierField(
-                                        physicalSchema, qualifierFieldName)
+                                ? resolveTopLevelQualifierField(physicalSchema, qualifierFieldName)
                                 : null;
                 serializer =
                         FormatAwareRowMutationSerializer.forFlatMode(
@@ -340,8 +344,7 @@ public class BigtableDynamicTableSink implements DynamicTableSink {
         for (Map.Entry<String, String> entry : rawOptions.entrySet()) {
             if (entry.getKey().endsWith(BigtableConnectorOptions.QUALIFIER_FIELD_SUFFIX)) {
                 String family =
-                        BigtableConnectorOptions.getFamilyFromQualifierOptionKey(
-                                entry.getKey());
+                        BigtableConnectorOptions.getFamilyFromQualifierOptionKey(entry.getKey());
                 String qualifierFieldName = entry.getValue();
                 configs.put(
                         family, resolveQualifierField(physicalSchema, family, qualifierFieldName));

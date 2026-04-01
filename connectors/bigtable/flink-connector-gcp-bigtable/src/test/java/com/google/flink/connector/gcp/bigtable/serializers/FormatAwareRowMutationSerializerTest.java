@@ -307,9 +307,7 @@ public class FormatAwareRowMutationSerializerTest {
                                         DataTypes.FIELD("title", DataTypes.STRING()))),
                         DataTypes.FIELD("rowKey", DataTypes.STRING().notNull()),
                         DataTypes.FIELD(
-                                "cf2",
-                                DataTypes.ROW(
-                                        DataTypes.FIELD("city", DataTypes.STRING()))));
+                                "cf2", DataTypes.ROW(DataTypes.FIELD("city", DataTypes.STRING()))));
 
         byte[] cf1Bytes = "cf1-bytes".getBytes();
         byte[] cf2Bytes = "cf2-bytes".getBytes();
@@ -660,8 +658,7 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
-                        schema, "rowKey", "products", mockSerializer, false,
-                        qualifierConfig);
+                        schema, "rowKey", "products", mockSerializer, false, qualifierConfig);
 
         GenericRowData record = new GenericRowData(4);
         record.setField(0, StringData.fromString("shop1"));
@@ -693,8 +690,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
-                        schema, "rowKey", "products",
-                        rowData -> "bytes".getBytes(), true, qualifierConfig);
+                        schema,
+                        "rowKey",
+                        "products",
+                        rowData -> "bytes".getBytes(),
+                        true,
+                        qualifierConfig);
 
         GenericRowData record = new GenericRowData(4);
         record.setField(0, StringData.fromString("shop1"));
@@ -708,8 +709,7 @@ public class FormatAwareRowMutationSerializerTest {
         assertEquals(1, entry.toProto().getMutationsCount());
         assertTrue(entry.toProto().getMutations(0).hasDeleteFromColumn());
         assertEquals(
-                "products",
-                entry.toProto().getMutations(0).getDeleteFromColumn().getFamilyName());
+                "products", entry.toProto().getMutations(0).getDeleteFromColumn().getFamilyName());
         assertEquals(
                 ByteString.copyFromUtf8("prod-42"),
                 entry.toProto().getMutations(0).getDeleteFromColumn().getColumnQualifier());
@@ -727,13 +727,11 @@ public class FormatAwareRowMutationSerializerTest {
         SerializationSchema<RowData> mockSerializer = rowData -> expectedBytes;
 
         // product_id is at index 1 in the full schema (rowKey is at 0)
-        QualifierConfig qualifierConfig =
-                new QualifierConfig(1, new BigIntType());
+        QualifierConfig qualifierConfig = new QualifierConfig(1, new BigIntType());
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
-                        schema, "rowKey", "products", mockSerializer, false,
-                        qualifierConfig);
+                        schema, "rowKey", "products", mockSerializer, false, qualifierConfig);
 
         GenericRowData record = new GenericRowData(3);
         record.setField(0, StringData.fromString("shop1"));
@@ -794,8 +792,12 @@ public class FormatAwareRowMutationSerializerTest {
 
         FormatAwareRowMutationSerializer serializer =
                 FormatAwareRowMutationSerializer.forFlatMode(
-                        schema, "rowKey", "products",
-                        rowData -> "bytes".getBytes(), false, qualifierConfig);
+                        schema,
+                        "rowKey",
+                        "products",
+                        rowData -> "bytes".getBytes(),
+                        false,
+                        qualifierConfig);
 
         GenericRowData record = new GenericRowData(3);
         record.setField(0, StringData.fromString("shop1"));
@@ -813,8 +815,7 @@ public class FormatAwareRowMutationSerializerTest {
                         DataTypes.FIELD("name", DataTypes.STRING()));
 
         FormatAwareRowMutationSerializer.forFlatMode(
-                schema, "nonExistentKey", "product",
-                rowData -> "bytes".getBytes(), false, null);
+                schema, "nonExistentKey", "product", rowData -> "bytes".getBytes(), false, null);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -869,8 +870,7 @@ public class FormatAwareRowMutationSerializerTest {
                         DataTypes.FIELD("rowKey", DataTypes.STRING().notNull()),
                         DataTypes.FIELD("name", DataTypes.STRING()));
 
-        FormatAwareRowMutationSerializer.forFlatMode(
-                schema, "rowKey", "cf1", null, false, null);
+        FormatAwareRowMutationSerializer.forFlatMode(schema, "rowKey", "cf1", null, false, null);
     }
 
     // --- Nested mode constructor null checks ---
@@ -901,8 +901,7 @@ public class FormatAwareRowMutationSerializerTest {
                         DataTypes.FIELD(
                                 "cf1", DataTypes.ROW(DataTypes.FIELD("f1", DataTypes.STRING()))));
 
-        new FormatAwareRowMutationSerializer(
-                schema, "rowKey", null, Collections.emptyMap(), false);
+        new FormatAwareRowMutationSerializer(schema, "rowKey", null, Collections.emptyMap(), false);
     }
 
     @Test(expected = NullPointerException.class)
@@ -916,8 +915,7 @@ public class FormatAwareRowMutationSerializerTest {
         Map<String, SerializationSchema<RowData>> familySerializers = new HashMap<>();
         familySerializers.put("cf1", rowData -> "bytes".getBytes());
 
-        new FormatAwareRowMutationSerializer(
-                schema, "rowKey", familySerializers, null, false);
+        new FormatAwareRowMutationSerializer(schema, "rowKey", familySerializers, null, false);
     }
 
     @Test

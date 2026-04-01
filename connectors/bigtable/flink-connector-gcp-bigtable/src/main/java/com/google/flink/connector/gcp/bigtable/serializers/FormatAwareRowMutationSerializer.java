@@ -78,8 +78,8 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
      * @param rowKeyField the name of the field used as the Bigtable row key
      * @param columnFamily the Bigtable column family to write to
      * @param serializer the format-provided {@link SerializationSchema} for encoding cell values
-     * @param upsertMode whether to handle {@link RowKind#DELETE} and {@link
-     *     RowKind#UPDATE_BEFORE} events
+     * @param upsertMode whether to handle {@link RowKind#DELETE} and {@link RowKind#UPDATE_BEFORE}
+     *     events
      * @param qualifierConfig optional qualifier field configuration, or {@code null} to use the
      *     default {@code "payload"} qualifier
      */
@@ -91,7 +91,11 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
             boolean upsertMode,
             @Nullable QualifierConfig qualifierConfig) {
         return new FormatAwareRowMutationSerializer(
-                physicalDataType, rowKeyField, columnFamily, serializer, upsertMode,
+                physicalDataType,
+                rowKeyField,
+                columnFamily,
+                serializer,
+                upsertMode,
                 qualifierConfig);
     }
 
@@ -146,8 +150,8 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
      * @param qualifierConfigs a map from column family name to its {@link QualifierConfig}, for
      *     families that use a field value as the column qualifier. Families not present in this map
      *     use the default {@code "payload"} qualifier.
-     * @param upsertMode whether to handle {@link RowKind#DELETE} and {@link
-     *     RowKind#UPDATE_BEFORE} events
+     * @param upsertMode whether to handle {@link RowKind#DELETE} and {@link RowKind#UPDATE_BEFORE}
+     *     events
      */
     public FormatAwareRowMutationSerializer(
             DataType physicalDataType,
@@ -309,8 +313,7 @@ public class FormatAwareRowMutationSerializer implements BaseRowMutationSerializ
                 }
                 int arity = indexToArity.get(fieldIndex);
                 RowData subRow = record.getRow(fieldIndex, arity);
-                String qualifier =
-                        extractQualifier(subRow, qc.fieldIndex(), qc.fieldType());
+                String qualifier = extractQualifier(subRow, qc.fieldIndex(), qc.fieldType());
                 entry.deleteCells(family, ByteString.copyFromUtf8(qualifier));
             } else {
                 // No qualifier: delete entire column family
